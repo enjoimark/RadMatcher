@@ -1,0 +1,31 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# --- RadMatcher runtime artifacts (regenerated on first run / training) ---
+matcher_model.pkl
+reranker.pkl
+embeddings.npz
+match_history.db
+flask_session/
+training.log
+
+# --- Local config that may contain secrets ---
+# app_settings.json is written at runtime and can hold an API key.
+# Configure via the Settings UI; keep your real key out of git.
+app_settings.json
+training_schedule.json
+.env
+
+# --- pyenv local pin (machine-specific) ---
+.python-version
+
+# --- OS / editor noise ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

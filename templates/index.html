@@ -1,0 +1,3578 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RadMatcher - Code Matcher</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@100;200;300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    // RadFuzion mint primary — see RadFuzion_Companion_App_Design_Guide.md
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            primary: '#2f9f73',
+            'mint-200': '#a7f3d0',
+            'mint-300': '#6ee7b7',
+            'mint-500': '#2f9f73',
+            'mint-600': '#259663',
+            'mint-700': '#1a7d4d',
+            'mint-800': '#0f5a38',
+            secondary: '#27272a',
+            'bg-deep': '#09090b',
+            'glass-dark': 'rgba(24, 24, 27, 0.72)',
+            'glass-light': 'rgba(63, 63, 70, 0.4)'
+          },
+          fontFamily: { display: ['Outfit', 'ui-sans-serif', 'system-ui', '-apple-system', 'sans-serif'] },
+          boxShadow: { 'xl-soft': '0 10px 30px -12px rgba(0, 0, 0, 0.5)' }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* === RadFuzion design tokens — see RadFuzion_Companion_App_Design_Guide.md === */
+    :root {
+      color-scheme: dark;
+
+      --rf-primary: #2f9f73;
+      --rf-mint-200: #a7f3d0;
+      --rf-mint-300: #6ee7b7;
+      --rf-mint-500: #2f9f73;
+      --rf-mint-600: #259663;
+      --rf-mint-700: #1a7d4d;
+      --rf-mint-800: #0f5a38;
+
+      --rf-bg-950: #09090b;
+      --rf-bg-900: #18181b;
+      --rf-bg-800: #27272a;
+
+      --rf-text-100: #f4f4f5;
+      --rf-text-200: #e4e4e7;
+      --rf-text-300: #d4d4d8;
+      --rf-text-400: #a1a1aa;
+      --rf-text-500: #71717a;
+
+      --rf-border-dark: #27272a;
+      --rf-border-mid: #3f3f46;
+
+      --rf-success: #10b981;
+      --rf-info: #38bdf8;
+      --rf-warning: #f59e0b;
+      --rf-error: #f43f5e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--rf-bg-950);
+      color: var(--rf-text-100);
+      font-family: 'Outfit', system-ui, -apple-system, sans-serif;
+    }
+    .app-shell { position: relative; z-index: 1; }
+
+    /* Inputs/selects: mint focus ring per design guide */
+    input, select, textarea {
+      font-family: inherit;
+    }
+    input[type="radio"], input[type="checkbox"] { accent-color: var(--rf-primary); }
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+    }
+    .rf-input:focus, .rf-select:focus {
+      border-color: var(--rf-primary);
+      box-shadow: 0 0 0 3px rgba(47, 159, 115, 0.2);
+    }
+
+    /* Native selects: strip the OS chrome and use a custom chevron so every
+       dropdown matches the text inputs (same border, radius, height, color). */
+    select {
+      -webkit-appearance: none;
+      -moz-appearance: none;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23a1a1aa' stroke-width='2'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 0.75rem center;
+      background-size: 1.05rem;
+      padding-right: 2.5rem;
+    }
+    select::-ms-expand { display: none; }
+
+    /* Match cards — dense, low-noise, mint accent on hover/top */
+    .match-card {
+      border: 1px solid var(--rf-border-dark);
+      background: rgba(24, 24, 27, 0.6);
+      border-radius: 0.75rem;
+      padding: 1rem;
+      transition: border-color 160ms ease, background 160ms ease, transform 120ms ease;
+      cursor: pointer;
+    }
+    .match-card:hover {
+      border-color: var(--rf-mint-600);
+      background: rgba(39, 39, 42, 0.7);
+    }
+    .match-card:active { transform: scale(0.99); }
+
+    .match-card.top-match {
+      background: rgba(26, 125, 77, 0.10);
+      border: 1px solid var(--rf-mint-600);
+      padding: 1.25rem;
+    }
+    .match-card.top-match:hover {
+      border-color: var(--rf-mint-500);
+      background: rgba(26, 125, 77, 0.16);
+    }
+
+    .top-match-badge {
+      position: absolute;
+      top: -9px;
+      right: 16px;
+      background: var(--rf-primary);
+      color: #ffffff;
+      padding: 0.2rem 0.65rem;
+      border-radius: 9999px;
+      font-size: 0.65rem;
+      font-weight: 600;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+
+    /* Pills / status chips — semibold, rounded-full, high-contrast per guide */
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.25rem 0.7rem;
+      border-radius: 9999px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      border: 1px solid transparent;
+      line-height: 1;
+    }
+    .pill-primary { background: rgba(47, 159, 115, 0.16); border-color: rgba(47, 159, 115, 0.45); color: var(--rf-mint-200); }
+    .pill-emerald { background: rgba(16, 185, 129, 0.15); border-color: rgba(16, 185, 129, 0.45); color: #6ee7b7; }
+    .pill-amber { background: rgba(245, 158, 11, 0.15); border-color: rgba(245, 158, 11, 0.45); color: #fcd34d; }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.18rem 0.55rem;
+      border-radius: 9999px;
+      font-size: 0.65rem;
+      letter-spacing: 0.05em;
+      background: var(--rf-bg-800);
+      color: var(--rf-text-300);
+      border: 1px solid var(--rf-border-mid);
+      font-weight: 500;
+    }
+
+    /* Score bars — flat mint/amber/success per severity */
+    .score-bar {
+      width: 100%;
+      height: 4px;
+      border-radius: 9999px;
+      background: var(--rf-bg-800);
+      overflow: hidden;
+    }
+    .score-bar-fill {
+      height: 100%;
+      width: 0;
+      border-radius: 9999px;
+      transition: width 600ms ease;
+    }
+    .score-elite { background: var(--rf-success); }
+    .score-strong { background: var(--rf-primary); }
+    .score-good { background: var(--rf-warning); }
+
+    /* Toasts — single header rail, left accent border by severity */
+    .flash-message {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      border-radius: 0.5rem;
+      border: 1px solid var(--rf-border-dark);
+      border-left-width: 3px;
+      padding: 0.45rem 0.9rem;
+      font-size: 0.8rem;
+      font-weight: 500;
+      background: var(--rf-bg-900);
+      color: var(--rf-text-200);
+      transition: opacity 200ms ease, transform 200ms ease;
+    }
+    .flash-success { border-left-color: var(--rf-success); }
+    .flash-error { border-left-color: var(--rf-error); }
+    .flash-info { border-left-color: var(--rf-info); }
+
+    /* Modals — custom card flow, no native browser prompts */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(9, 9, 11, 0.72);
+      backdrop-filter: blur(6px);
+      z-index: 50;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    .modal-overlay.active { display: flex; }
+
+    .modal-content {
+      background: var(--rf-bg-900);
+      border: 1px solid var(--rf-border-dark);
+      border-radius: 1rem;
+      box-shadow: 0 10px 40px -8px rgba(0, 0, 0, 0.6);
+      max-width: 900px;
+      width: 100%;
+      max-height: 90vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .modal-body {
+      flex: 1;
+      overflow-y: auto;
+    }
+
+    .match-history-log {
+      max-height: calc(100vh - 320px);
+      min-height: 320px;
+      overflow-y: auto;
+    }
+
+    /* Scrollbar restraint — match the dense aesthetic */
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--rf-bg-800); border-radius: 9999px; border: 2px solid var(--rf-bg-950); }
+    ::-webkit-scrollbar-thumb:hover { background: var(--rf-border-mid); }
+  </style>
+</head>
+<body class="min-h-screen font-display text-zinc-100">
+  <div class="app-shell flex min-h-screen">
+    <!-- Sidebar -->
+    <aside class="hidden w-72 shrink-0 flex-col border-r border-zinc-800 bg-zinc-900/50 px-6 py-7 shadow-xl backdrop-blur-xl lg:flex">
+      <div class="space-y-7">
+        <!-- Wordmark (no logo) -->
+        <a class="flex items-baseline gap-2 px-2" href="/">
+          <span class="text-xl font-semibold tracking-tight text-zinc-100">RadMatcher</span>
+          <span class="text-[11px] font-medium text-zinc-500">v{{ version }}</span>
+        </a>
+
+        <!-- Navigation -->
+        <nav class="space-y-2">
+          <button onclick="openCodeLegend()" class="group flex w-full items-center justify-between rounded-2xl px-4 py-3 text-sm font-medium transition-all duration-200 bg-zinc-900/50 text-zinc-300 hover:bg-zinc-800/60 hover:text-white">
+            <span class="flex items-center gap-3">
+              <span class="material-symbols-outlined text-[19px]">book</span>
+              Code Legend
+            </span>
+            <span class="material-symbols-outlined text-[18px] opacity-0 transition group-hover:translate-x-1 group-hover:opacity-100">arrow_forward</span>
+          </button>
+
+          <button onclick="openCodeSet()" class="group flex w-full items-center justify-between rounded-2xl px-4 py-3 text-sm font-medium transition-all duration-200 bg-zinc-900/50 text-zinc-300 hover:bg-zinc-800/60 hover:text-white">
+            <span class="flex items-center gap-3">
+              <span class="material-symbols-outlined text-[19px]">table_view</span>
+              Code Set
+            </span>
+            <span class="material-symbols-outlined text-[18px] opacity-0 transition group-hover:translate-x-1 group-hover:opacity-100">arrow_forward</span>
+          </button>
+
+          <button onclick="openTrainingData()" class="group flex w-full items-center justify-between rounded-2xl px-4 py-3 text-sm font-medium transition-all duration-200 bg-zinc-900/50 text-zinc-300 hover:bg-zinc-800/60 hover:text-white">
+            <span class="flex items-center gap-3">
+              <span class="material-symbols-outlined text-[19px]">dataset</span>
+              Training Data
+            </span>
+            <span class="material-symbols-outlined text-[18px] opacity-0 transition group-hover:translate-x-1 group-hover:opacity-100">arrow_forward</span>
+          </button>
+
+          <button onclick="openMatchHistory()" class="group flex w-full items-center justify-between rounded-2xl px-4 py-3 text-sm font-medium transition-all duration-200 bg-zinc-900/50 text-zinc-300 hover:bg-zinc-800/60 hover:text-white">
+            <span class="flex items-center gap-3">
+              <span class="material-symbols-outlined text-[19px]">history</span>
+              Match History
+            </span>
+            <span class="material-symbols-outlined text-[18px] opacity-0 transition group-hover:translate-x-1 group-hover:opacity-100">arrow_forward</span>
+          </button>
+
+          <button onclick="openReviewAI()" class="group flex w-full items-center justify-between rounded-2xl px-4 py-3 text-sm font-medium transition-all duration-200 bg-zinc-900/50 text-zinc-300 hover:bg-zinc-800/60 hover:text-white">
+            <span class="flex items-center gap-3">
+              <span class="material-symbols-outlined text-[19px]">rate_review</span>
+              Review AI
+            </span>
+            <span id="reviewAICount" class="text-xs bg-amber-500/30 text-amber-200 rounded-full px-2 py-0.5 hidden">0</span>
+            <span class="material-symbols-outlined text-[18px] opacity-0 transition group-hover:translate-x-1 group-hover:opacity-100">arrow_forward</span>
+          </button>
+
+          <button onclick="openBulkUpload()" class="group flex w-full items-center justify-between rounded-2xl px-4 py-3 text-sm font-medium transition-all duration-200 bg-zinc-900/50 text-zinc-300 hover:bg-zinc-800/60 hover:text-white">
+            <span class="flex items-center gap-3">
+              <span class="material-symbols-outlined text-[19px]">upload_file</span>
+              Bulk Matcher
+            </span>
+            <span class="material-symbols-outlined text-[18px] opacity-0 transition group-hover:translate-x-1 group-hover:opacity-100">arrow_forward</span>
+          </button>
+          <button onclick="openSettings()" class="group flex w-full items-center justify-between rounded-2xl px-4 py-3 text-sm font-medium transition-all duration-200 bg-zinc-900/50 text-zinc-300 hover:bg-zinc-800/60 hover:text-white">
+            <span class="flex items-center gap-3">
+              <span class="material-symbols-outlined text-[19px]">settings</span>
+              Settings
+            </span>
+            <span class="material-symbols-outlined text-[18px] opacity-0 transition group-hover:translate-x-1 group-hover:opacity-100">arrow_forward</span>
+          </button>
+          <button onclick="openTermReplacements()" class="group flex w-full items-center justify-between rounded-2xl px-4 py-3 text-sm font-medium transition-all duration-200 bg-zinc-900/50 text-zinc-300 hover:bg-zinc-800/60 hover:text-white">
+            <span class="flex items-center gap-3">
+              <span class="material-symbols-outlined text-[19px]">sync_alt</span>
+              Term Overrides
+            </span>
+            <span class="material-symbols-outlined text-[18px] opacity-0 transition group-hover:translate-x-1 group-hover:opacity-100">arrow_forward</span>
+          </button>
+
+          <div class="my-4 border-t border-zinc-800"></div>
+
+          {% if not session.get('training_mode') %}
+          <button onclick="openTrainingAuth()" class="group flex w-full items-center justify-between rounded-2xl px-4 py-3 text-sm font-medium transition-all duration-200 bg-primary/20 text-primary hover:bg-primary/30">
+            <span class="flex items-center gap-3">
+              <span class="material-symbols-outlined text-[19px]">school</span>
+              Training Mode
+            </span>
+            <span class="material-symbols-outlined text-[18px] opacity-0 transition group-hover:translate-x-1 group-hover:opacity-100">arrow_forward</span>
+          </button>
+          {% else %}
+          <form method="post" action="/set_training_mode" class="w-full">
+            <input type="hidden" name="exit_training" value="1">
+            <button type="submit" class="group flex w-full items-center justify-between rounded-2xl px-4 py-3 text-sm font-medium transition-all duration-200 bg-red-500/10 text-red-200 hover:bg-red-500/20">
+              <span class="flex items-center gap-3">
+                <span class="material-symbols-outlined text-[19px]">logout</span>
+                Exit Training
+              </span>
+              <span class="material-symbols-outlined text-[18px] opacity-0 transition group-hover:translate-x-1 group-hover:opacity-100">arrow_forward</span>
+            </button>
+          </form>
+          {% endif %}
+
+          {% if session.get('training_mode') %}
+          <button onclick="startModelTraining()" class="group flex w-full items-center justify-between rounded-2xl px-4 py-3 text-sm font-medium transition-all duration-200 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20">
+            <span class="flex items-center gap-3">
+              <span class="material-symbols-outlined text-[19px]">model_training</span>
+              Retrain Model
+            </span>
+            <span class="material-symbols-outlined text-[18px] opacity-0 transition group-hover:translate-x-1 group-hover:opacity-100">arrow_forward</span>
+          </button>
+          {% endif %}
+        </nav>
+
+        <!-- Stats Section -->
+        <div class="mt-auto pt-6 space-y-3">
+          <div class="text-xs font-semibold uppercase tracking-wider text-zinc-400 px-4">Usage Stats</div>
+          <div class="rounded-2xl bg-zinc-900/50 p-4 space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="text-xs text-zinc-400">Avg/Min (60m)</span>
+              <span id="statsAvgPerMin" class="text-sm font-semibold text-zinc-200">--</span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-xs text-zinc-400">Avg/Hour (24h)</span>
+              <span id="statsAvgPerHour" class="text-sm font-semibold text-zinc-200">--</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </aside>
+
+    <div class="flex flex-1 flex-col">
+      <!-- Header -->
+      <header class="border-b border-zinc-800 bg-zinc-900/50 backdrop-blur-xl lg:px-10 relative">
+        <!-- Training Progress Bar (in header) -->
+        <div id="headerTrainingBar" class="hidden">
+          <div id="headerTrainingContainer" class="px-6 py-4 border-b border-zinc-800">
+            <div class="flex flex-col gap-2">
+              <div class="grid grid-cols-[auto,1fr,auto] items-center gap-5">
+                <div class="flex items-center gap-3">
+                  <span id="headerTrainingIcon" class="material-symbols-outlined animate-spin text-2xl text-primary">progress_activity</span>
+                  <span class="text-base font-semibold text-white" id="headerTrainingTitle">Training Model</span>
+                </div>
+                <div class="min-w-0 flex items-center gap-4">
+                  <div class="relative flex-1 w-full h-3 rounded-full bg-transparent overflow-hidden">
+                    <div id="headerTrainingProgress" class="absolute top-0 bottom-0 left-0 rounded-full transition-all duration-300" style="width: 5%; background: #2f9f73;"></div>
+                  </div>
+                  <span class="text-sm font-mono font-semibold text-zinc-200 w-14 text-right" id="headerTrainingPercent">0%</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button id="headerTrainingCancel" onclick="cancelTraining()" class="rounded-lg px-3 py-1 text-xs font-medium text-red-300 hover:text-white hover:bg-red-500/30 border border-red-500/30 transition">
+                    Cancel
+                  </button>
+                  <button id="headerTrainingClose" onclick="dismissHeaderTraining()" class="hidden rounded-lg p-1.5 text-zinc-400 hover:text-white hover:bg-zinc-800/60 transition">
+                    <span class="material-symbols-outlined">close</span>
+                  </button>
+                </div>
+              </div>
+              <div class="grid grid-cols-[auto,1fr,auto]">
+                <div></div>
+                <span class="min-w-0 text-sm text-zinc-300 text-center w-full truncate" id="headerTrainingMessage">Starting...</span>
+                <div></div>
+              </div>
+              <p id="headerTrainingNote" class="hidden text-xs text-zinc-400 text-center">
+                Training can take 3–5 minutes depending on code set and mappings size.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="px-6 py-5">
+        <div class="space-y-6">
+          <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div class="space-y-2">
+              <div class="flex items-center gap-4">
+                <h2 class="text-2xl font-semibold text-white">Code Matcher</h2>
+                {% if session.get('training_mode') %}
+                <span class="pill pill-emerald">
+                  <span class="material-symbols-outlined text-sm">school</span>
+                  Training Mode
+                </span>
+                {% endif %}
+              </div>
+              <p class="text-sm text-zinc-300">AI-powered exam code matching with fuzzy search</p>
+            </div>
+          </div>
+
+          <!-- Query Input Form (compact, shown alongside results) -->
+          {% if result %}
+          <form method="post" class="space-y-4">
+            <div class="grid gap-3 md:grid-cols-[minmax(0,1fr),180px,auto]">
+              <div>
+                <input
+                  name="exam_description"
+                  type="text"
+                  placeholder="Enter exam description (e.g., cr chest 2v, ct head w contrast)"
+                  value="{{ result.original if result else '' }}"
+                  class="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 transition focus:border-primary/60 focus:outline-none focus:ring-4 focus:ring-primary/20"
+                  autofocus
+                />
+              </div>
+              <div>
+                <select
+                  name="manual_modality"
+                  class="rf-select w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 transition focus:border-primary/60 focus:outline-none focus:ring-4 focus:ring-primary/20"
+                >
+                  <option value="" selected>Auto</option>
+                  <option value="XR">XR/CR</option>
+                  <option value="CT">CT</option>
+                  <option value="MR">MR</option>
+                  <option value="US">US</option>
+                  <option value="MG">MG</option>
+                  <option value="NM">NM</option>
+                  <option value="RF">RF</option>
+                  <option value="XA">XA</option>
+                  <option value="BMD">BMD</option>
+                  <option value="PT">PT</option>
+                </select>
+              </div>
+              <button type="submit" class="inline-flex items-center justify-center gap-2 rounded-xl border border-primary/50 bg-primary px-6 py-2.5 text-sm font-semibold text-white shadow-lg transition hover:bg-primary/90">
+                <span class="material-symbols-outlined text-base">search</span>
+                <span class="hidden sm:inline">Match</span>
+              </button>
+            </div>
+          </form>
+          {% endif %}
+
+          <!-- Mobile nav -->
+        <div class="mt-6 grid grid-cols-2 gap-2 lg:hidden">
+          <button onclick="openCodeLegend()" class="flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold bg-zinc-800/60 text-zinc-300 hover:bg-zinc-700/60">
+            <span class="material-symbols-outlined text-sm">book</span>
+            Legend
+          </button>
+          <button onclick="openCodeSet()" class="flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold bg-zinc-800/60 text-zinc-300 hover:bg-zinc-700/60">
+            <span class="material-symbols-outlined text-sm">table_view</span>
+            Code Set
+          </button>
+          <button onclick="openTrainingData()" class="flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold bg-zinc-800/60 text-zinc-300 hover:bg-zinc-700/60">
+            <span class="material-symbols-outlined text-sm">dataset</span>
+            Training
+          </button>
+          <button onclick="openMatchHistory()" class="flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold bg-zinc-800/60 text-zinc-300 hover:bg-zinc-700/60">
+            <span class="material-symbols-outlined text-sm">history</span>
+            History
+          </button>
+          <button onclick="openReviewAI()" class="flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold bg-zinc-800/60 text-zinc-300 hover:bg-zinc-700/60">
+            <span class="material-symbols-outlined text-sm">rate_review</span>
+            Review AI
+          </button>
+          <button onclick="openBulkUpload()" class="flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold bg-zinc-800/60 text-zinc-300 hover:bg-zinc-700/60">
+            <span class="material-symbols-outlined text-sm">upload_file</span>
+            Bulk Matcher
+          </button>
+          <button onclick="openSettings()" class="flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold bg-zinc-800/60 text-zinc-300 hover:bg-zinc-700/60">
+            <span class="material-symbols-outlined text-sm">settings</span>
+            Settings
+          </button>
+          <button onclick="openTermReplacements()" class="flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold bg-zinc-800/60 text-zinc-300 hover:bg-zinc-700/60">
+            <span class="material-symbols-outlined text-sm">sync_alt</span>
+            Overrides
+          </button>
+          {% if not session.get('training_mode') %}
+          <button onclick="openTrainingAuth()" class="flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold bg-primary text-white">
+            <span class="material-symbols-outlined text-sm">school</span>
+            Train Mode
+          </button>
+          {% else %}
+          <form method="post" action="/set_training_mode" class="inline">
+            <input type="hidden" name="exit_training" value="1">
+            <button type="submit" class="flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold bg-red-500/20 text-red-200">
+              <span class="material-symbols-outlined text-sm">logout</span>
+              Exit
+            </button>
+          </form>
+          {% endif %}
+        </div>
+        </div>
+      </header>
+
+    <!-- Main content -->
+    <main class="flex-1 px-6 pt-0 pb-6 lg:px-10">
+      <div class="mx-auto max-w-6xl space-y-1">
+        <!-- Flash Messages -->
+        <div class="min-h-[2.5rem]">
+          {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+          <div class="flex flex-wrap items-center justify-center gap-3">
+            {% for category, message in messages %}
+            <div class="flash-message
+              {% if category == 'success' %} flash-success
+              {% elif category == 'error' %} flash-error
+              {% elif category == 'info' %} flash-info
+              {% endif %}">
+              <span class="material-symbols-outlined text-base">
+                {% if category == 'success' %}check_circle
+                {% elif category == 'error' %}error
+                {% else %}info
+                {% endif %}
+              </span>
+              <span>{{ message }}</span>
+            </div>
+            {% endfor %}
+          </div>
+          {% endif %}
+          {% endwith %}
+        </div>
+
+        {% if result %}
+        <!-- Query Analysis -->
+        <section class="rounded-2xl border border-zinc-800 bg-zinc-800/60 shadow-xl backdrop-blur">
+          <header class="flex items-center justify-between border-b border-zinc-800 px-6 py-4 text-sm text-zinc-300">
+            <div>
+              <h3 class="text-lg font-semibold text-white">Query Analysis</h3>
+              <p class="text-xs text-zinc-400">Extracted features from your search</p>
+            </div>
+            <span class="material-symbols-outlined text-base text-primary">analytics</span>
+          </header>
+          <div class="px-6 py-5">
+            <div class="overflow-hidden rounded-2xl border border-zinc-800">
+              <table class="w-full text-sm">
+                <tbody class="divide-y divide-zinc-800">
+                  <tr>
+                    <th class="w-40 px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-zinc-400">Original</th>
+                    <td class="px-6 py-4 font-semibold text-zinc-100">{{ result.original }}</td>
+                  </tr>
+                  <tr>
+                    <th class="w-40 px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-zinc-400">Normalized</th>
+                    <td class="px-6 py-4 text-zinc-100">{{ result.normalized }}</td>
+                  </tr>
+                  <tr>
+                    <th class="w-40 px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-zinc-400">Modality</th>
+                    <td class="px-6 py-4 text-zinc-100"><span class="chip">{{ result.modality }}</span></td>
+                  </tr>
+                  {% if result.views != 'NONE' %}
+                  <tr>
+                    <th class="w-40 px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-zinc-400">Views</th>
+                    <td class="px-6 py-4 text-zinc-100"><span class="chip">{{ result.views }}</span></td>
+                  </tr>
+                  {% endif %}
+                  {% if result.body_parts %}
+                  <tr>
+                    <th class="w-40 px-6 py-4 text-left text-[11px] font-semibold uppercase tracking-[0.3em] text-zinc-400">Body Parts</th>
+                    <td class="px-6 py-4 text-zinc-100">{{ result.body_parts | join(', ') }}</td>
+                  </tr>
+                  {% endif %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- Match Results -->
+        <section class="rounded-2xl border border-zinc-800 bg-zinc-800/60 shadow-xl backdrop-blur">
+          <header class="flex items-center justify-between border-b border-zinc-800 px-6 py-4 text-sm text-zinc-300">
+            <div>
+              <h3 class="text-lg font-semibold text-white">
+                {% if total %}Bulk Training Wizard{% else %}Match Results{% endif %}
+              </h3>
+              <p class="text-xs text-zinc-400">
+                {% if total %}
+                  Processing exam {{ index }} of {{ total }}
+                {% else %}
+                  Top matches from code set
+                {% endif %}
+              </p>
+            </div>
+            {% if total %}
+            <div class="flex items-center gap-2">
+              <span class="pill pill-primary">{{ index }}/{{ total }}</span>
+              <span class="material-symbols-outlined text-base text-primary">timeline</span>
+            </div>
+            {% else %}
+            <span class="material-symbols-outlined text-base text-primary">military_tech</span>
+            {% endif %}
+          </header>
+          <div class="px-6 py-5">
+            <form method="post" action="{% if total %}/wizard{% else %}/confirm{% endif %}" id="matchForm">
+              <input type="hidden" name="original" value="{{ result.original }}">
+              <input type="hidden" name="accepted_code" id="acceptedCodeInput" value="">
+              {% set has_matches = result.matches and result.matches|length > 0 %}
+              {% set top_ok = result.top_ok if result.top_ok is not none else true %}
+
+              {% if total %}
+              <!-- WIZARD MODE: Trainer Interface -->
+              <div class="space-y-6">
+                {% if not has_matches %}
+                <div class="rounded-2xl border border-zinc-800 bg-zinc-950 p-6 text-center">
+                  <p class="text-sm text-zinc-300">No match above {{ result.min_score or 300 }}.</p>
+                  {% if result.rejected_score is not none %}
+                  <p class="mt-2 text-xs text-zinc-500">Top score: {{ result.rejected_score }}</p>
+                  {% endif %}
+                </div>
+
+                <div class="rounded-xl border border-primary/30 bg-primary/10 p-4">
+                  <label class="mb-2 block text-sm font-medium text-primary">Enter Correct Code Manually</label>
+                  <input
+                    id="manualCodeInput"
+                    class="manual-code-input w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 transition focus:border-primary/60 focus:outline-none focus:ring-4 focus:ring-primary/20"
+                    name="manual_code"
+                    type="text"
+                    placeholder="Enter code"
+                  />
+                </div>
+                {% else %}
+                {% if not top_ok %}
+                <div class="rounded-2xl border border-amber-400/30 bg-amber-500/10 p-4 text-center">
+                  <p class="text-sm text-amber-200">Top match below {{ result.min_score or 300 }}. Review before accepting.</p>
+                </div>
+                {% endif %}
+                <!-- Top Match Card -->
+                <div class="rounded-2xl border-2 border-primary/40 bg-gradient-to-br from-primary/20 to-primary/5 p-6">
+                  <div class="mb-4 flex items-center gap-2 text-primary">
+                    <span class="material-symbols-outlined text-xl">stars</span>
+                    <span class="text-sm font-semibold uppercase tracking-[0.3em]">Best Match</span>
+                  </div>
+
+                  <div class="space-y-3">
+                    <div class="flex items-center gap-3">
+                      <span class="rounded-xl bg-primary px-4 py-1.5 text-base font-bold text-black">{{ result.matches[0].code }}</span>
+                      <button type="button" onclick="showScoreBreakdown(0)" class="text-xs text-primary hover:text-primary/80 underline decoration-dotted">
+                        Score: {{ result.matches[0].score }}
+                      </button>
+                    </div>
+
+                    {% if result.matches[0].method != 'VERIFIED' %}
+                    <button type="button" onclick="verifyMatch('{{ result.matches[0].code }}', '{{ result.original }}')" class="inline-flex items-center gap-2 rounded-xl border-2 border-emerald-400/50 bg-emerald-500/20 px-5 py-2.5 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/30 hover:border-emerald-400">
+                      <span class="material-symbols-outlined text-lg">verified</span>
+                      Verify This Match
+                    </button>
+                    {% endif %}
+
+                    <p class="text-lg font-semibold text-white">{{ result.matches[0].description }}</p>
+                    <div class="flex gap-2">
+                      {% if result.matches[0].modality %}<span class="chip">{{ result.matches[0].modality }}</span>{% endif %}
+                      {% if result.matches[0].laterality and result.matches[0].laterality != 'UNKNOWN' %}
+                      <span class="chip">{{ result.matches[0].laterality }}</span>
+                      {% endif %}
+                      {% if result.matches[0].view_count and result.matches[0].view_count != 'N/A' %}
+                      <span class="chip">{{ result.matches[0].view_count }} views</span>
+                      {% endif %}
+                    </div>
+                  </div>
+
+                  <!-- Hidden score breakdown for top match -->
+                  <div id="score-breakdown-0" class="hidden" data-code="{{ result.matches[0].code }}" data-score="{{ result.matches[0].score }}" data-method="{{ result.matches[0].method }}" data-exact="{{ '1' if result.matches[0].is_exact else '' }}">
+                    {% if result.matches[0].score_log %}
+                      {% for log_entry in result.matches[0].score_log %}
+                      <div class="score-log-entry" data-component="{{ log_entry.component }}" data-value="{{ log_entry.value }}" data-detail="{{ log_entry.detail }}"></div>
+                      {% endfor %}
+                    {% endif %}
+                  </div>
+                </div>
+
+                <!-- Decision Buttons -->
+                <div class="grid gap-3 md:grid-cols-2">
+                  <button type="button" onclick="acceptMatch('{{ result.matches[0].code }}')" class="group flex items-center justify-center gap-3 rounded-2xl border-2 border-emerald-400/50 bg-emerald-500/20 px-6 py-4 text-emerald-200 transition hover:bg-emerald-500/30 hover:border-emerald-400">
+                    <span class="material-symbols-outlined text-2xl">check_circle</span>
+                    <span class="text-base font-semibold">Correct Match</span>
+                  </button>
+                  <button type="button" onclick="rejectMatch()" class="group flex items-center justify-center gap-3 rounded-2xl border-2 border-red-400/50 bg-red-500/20 px-6 py-4 text-red-200 transition hover:bg-red-500/30 hover:border-red-400">
+                    <span class="material-symbols-outlined text-2xl">cancel</span>
+                    <span class="text-base font-semibold">Wrong Match</span>
+                  </button>
+                </div>
+
+                <!-- Alternative Matches (Hidden by default) -->
+                <div id="alternativesSection" class="hidden space-y-4">
+                  <div class="flex items-center gap-2 text-amber-300">
+                    <span class="material-symbols-outlined text-base">info</span>
+                    <span class="text-sm font-semibold uppercase tracking-[0.3em]">Choose Correct Match</span>
+                  </div>
+
+                  {% for match in result.matches[1:5] %}
+                  <label class="block cursor-pointer rounded-xl border border-zinc-700 bg-zinc-900/50 p-4 transition hover:bg-zinc-800/60 hover:border-primary/50">
+                    <input type="radio" name="selected_code" value="{{ match.code }}" class="mr-3 accent-primary">
+                    <span class="inline-block">
+                      <span class="code-badge">{{ match.code }}</span>
+                      <span class="ml-3 text-sm text-zinc-100">{{ match.description }}</span>
+                      <span class="ml-3 text-xs text-zinc-400">(Score: {{ match.score }})</span>
+                    </span>
+
+                    <!-- Hidden score breakdown -->
+                    <div id="score-breakdown-{{ loop.index }}" class="hidden" data-code="{{ match.code }}" data-score="{{ match.score }}" data-method="{{ match.method }}" data-exact="{{ '1' if match.is_exact else '' }}">
+                      {% if match.score_log %}
+                        {% for log_entry in match.score_log %}
+                        <div class="score-log-entry" data-component="{{ log_entry.component }}" data-value="{{ log_entry.value }}" data-detail="{{ log_entry.detail }}"></div>
+                        {% endfor %}
+                      {% endif %}
+                    </div>
+                  </label>
+                  {% endfor %}
+
+                  <div class="rounded-xl border border-primary/30 bg-primary/10 p-4">
+                    <label class="mb-2 block text-sm font-medium text-primary">Or Enter Correct Code Manually</label>
+                    <input
+                      id="manualCodeInput"
+                      class="manual-code-input w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 transition focus:border-primary/60 focus:outline-none focus:ring-4 focus:ring-primary/20"
+                      name="manual_code"
+                      type="text"
+                      placeholder="Enter code"
+                    />
+                  </div>
+
+                  <button type="submit" id="saveWrongButton" class="inline-flex items-center gap-2 rounded-2xl border border-primary/50 bg-primary px-6 py-3 text-sm font-semibold text-white shadow-lg transition hover:bg-primary/90">
+                    <span class="material-symbols-outlined text-base">save</span>
+                    Save & Next
+                  </button>
+                </div>
+              </div>
+                {% endif %}
+
+              {% else %}
+              <!-- NORMAL MODE: Best Match -->
+              <div class="space-y-4">
+                {% if has_matches %}
+                {% set top_match = result.matches[0] %}
+                <input type="hidden" name="selected_code" id="selectedCodeInput" value="{% if top_ok %}{{ top_match.code }}{% endif %}">
+
+                {% if not top_ok %}
+                <div class="rounded-2xl border border-amber-400/30 bg-amber-500/10 p-4 text-center">
+                  <p class="text-sm text-amber-200">Top match below {{ result.min_score or 300 }}. No automatic selection.</p>
+                </div>
+                {% endif %}
+
+                <div class="match-card top-match relative block">
+                  <div class="top-match-badge">Best Match</div>
+                  <div class="flex items-start gap-3">
+                    <div class="flex-1 space-y-3">
+                      <div class="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p class="text-lg font-semibold text-white">{{ top_match.code }}</p>
+                          <p class="text-sm text-zinc-300">{{ top_match.description }}</p>
+                        </div>
+                        <div class="flex flex-wrap gap-2">
+                          {% if top_match.confidence == 'HIGH' %}
+                          <span class="pill pill-emerald">High</span>
+                          {% elif top_match.confidence == 'MEDIUM' %}
+                          <span class="pill pill-primary">Medium</span>
+                          {% else %}
+                          <span class="pill pill-amber">Low</span>
+                          {% endif %}
+                        </div>
+                      </div>
+
+                      <div class="score-bar">
+                        {% set visual_max = 300 %}
+                        {% set raw_ratio = (top_match.score / visual_max) * 100 %}
+                        {% set score_ratio = 20 + (raw_ratio * 0.8) if raw_ratio < 100 else 100 %}
+                        {% set score_color =
+                          'score-elite' if top_match.score >= 350 else
+                          'score-strong' if top_match.score >= 250 else
+                          'score-good'
+                        %}
+                        <div id="score-bar-0" class="score-bar-fill {{ score_color }}" data-target="{{ score_ratio }}"></div>
+                      </div>
+
+                      <div class="flex items-center justify-between text-xs">
+                        <button type="button" onclick="showScoreBreakdown(0)" class="text-zinc-400 hover:text-primary transition cursor-pointer underline decoration-dotted underline-offset-2">
+                          Confidence Score: {{ top_match.score }}
+                        </button>
+                        <div class="flex gap-2">
+                          {% if top_match.modality %}<span class="chip">{{ top_match.modality }}</span>{% endif %}
+                          {% if top_match.laterality and top_match.laterality != 'UNKNOWN' %}
+                          <span class="chip">{{ top_match.laterality }}</span>
+                          {% endif %}
+                          {% if top_match.view_count and top_match.view_count != 'N/A' %}
+                          <span class="chip">{{ top_match.view_count }} views</span>
+                          {% endif %}
+                        </div>
+                      </div>
+
+                      <!-- Hidden score breakdown data -->
+                      <div id="score-breakdown-0" class="hidden" data-code="{{ top_match.code }}" data-score="{{ top_match.score }}" data-method="{{ top_match.method }}" data-exact="{{ '1' if top_match.is_exact else '' }}">
+                        {% if top_match.score_log %}
+                          {% for log_entry in top_match.score_log %}
+                          <div class="score-log-entry" data-component="{{ log_entry.component }}" data-value="{{ log_entry.value }}" data-detail="{{ log_entry.detail }}"></div>
+                          {% endfor %}
+                        {% endif %}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {% if session.get('training_mode') and top_match.method != 'VERIFIED' %}
+                <button type="button" onclick="verifyMatch('{{ top_match.code }}', '{{ result.original }}')" class="w-full inline-flex items-center justify-center gap-2 rounded-xl border-2 border-emerald-400/50 bg-emerald-500/20 px-5 py-3 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/30 hover:border-emerald-400">
+                  <span class="material-symbols-outlined text-lg">verified</span>
+                  Verify This Match
+                </button>
+                {% endif %}
+
+                <div class="text-xs text-zinc-400">
+                  Selected code:
+                  <span id="selectedCodeDisplay" class="text-zinc-200">
+                    {% if top_ok %}{{ top_match.code }}{% else %}None{% endif %}
+                  </span>
+                </div>
+
+                {% if result.matches|length > 1 %}
+                <details class="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4">
+                  <summary class="cursor-pointer text-sm font-semibold text-zinc-200">Other matches</summary>
+                  <div class="mt-4 space-y-3">
+                    {% for match in result.matches[1:5] %}
+                    <div class="rounded-xl border border-zinc-800 bg-zinc-950/80 p-4">
+                      <div class="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p class="text-sm font-semibold text-white">{{ match.code }}</p>
+                          <p class="text-xs text-zinc-300">{{ match.description }}</p>
+                        </div>
+                        <button type="button" onclick="useMatchCode('{{ match.code }}')" class="rounded-lg border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary transition hover:bg-primary/20">
+                          Use
+                        </button>
+                      </div>
+
+                      <div class="mt-3 flex items-center justify-between text-xs">
+                        <button type="button" onclick="showScoreBreakdown({{ loop.index }})" class="text-zinc-400 hover:text-primary transition cursor-pointer underline decoration-dotted underline-offset-2">
+                          Confidence Score: {{ match.score }}
+                        </button>
+                        <div class="flex gap-2">
+                          {% if match.modality %}<span class="chip">{{ match.modality }}</span>{% endif %}
+                          {% if match.laterality and match.laterality != 'UNKNOWN' %}
+                          <span class="chip">{{ match.laterality }}</span>
+                          {% endif %}
+                          {% if match.view_count and match.view_count != 'N/A' %}
+                          <span class="chip">{{ match.view_count }} views</span>
+                          {% endif %}
+                        </div>
+                      </div>
+
+                      <!-- Hidden score breakdown data -->
+                      <div id="score-breakdown-{{ loop.index }}" class="hidden" data-code="{{ match.code }}" data-score="{{ match.score }}" data-method="{{ match.method }}" data-exact="{{ '1' if match.is_exact else '' }}">
+                        {% if match.score_log %}
+                          {% for log_entry in match.score_log %}
+                          <div class="score-log-entry" data-component="{{ log_entry.component }}" data-value="{{ log_entry.value }}" data-detail="{{ log_entry.detail }}"></div>
+                          {% endfor %}
+                        {% endif %}
+                      </div>
+                    </div>
+                    {% endfor %}
+                  </div>
+                </details>
+                {% endif %}
+                {% else %}
+                <div class="rounded-2xl border border-zinc-800 bg-zinc-950 p-6 text-center">
+                  <p class="text-sm text-zinc-300">No match above {{ result.min_score or 300 }}.</p>
+                  {% if result.rejected_score is not none %}
+                  <p class="mt-2 text-xs text-zinc-500">Top score: {{ result.rejected_score }}</p>
+                  {% endif %}
+                </div>
+                {% endif %}
+              </div>
+
+              {% if llm_fallback_enabled and not total %}
+              <!-- AI Suggestion (live fetch when match score is low) -->
+              <div id="aiSuggestionBlock" class="mt-6 rounded-2xl border-2 border-amber-500/40 bg-amber-500/10 p-6" data-query="{{ llm_query | e }}" data-match-score="{{ llm_top_score }}">
+                <div class="flex items-center gap-2 text-amber-200 mb-3">
+                  <span class="material-symbols-outlined text-xl">smart_toy</span>
+                  <span class="text-sm font-semibold uppercase tracking-[0.3em]">AI Suggestion</span>
+                </div>
+                <div id="aiSuggestionContent">
+                  <div class="flex items-center gap-3 text-amber-200/90">
+                    <span class="material-symbols-outlined animate-spin text-2xl">progress_activity</span>
+                    <span>Finding a matching code...</span>
+                  </div>
+                </div>
+              </div>
+              {% endif %}
+              {% endif %}
+
+              {% if session.get('training_mode') %}
+              <!-- Training Mode Controls -->
+              <div class="mt-6 space-y-4 rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-6">
+                <div class="flex items-center gap-2 text-emerald-200">
+                  <span class="material-symbols-outlined text-base">school</span>
+                  <span class="text-sm font-semibold uppercase tracking-[0.3em]">Training Controls</span>
+                </div>
+
+                <div class="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label class="mb-2 block text-xs font-medium uppercase tracking-[0.3em] text-zinc-400">Manual Code (Optional)</label>
+                    <input
+                      id="manualCodeTrainingInput"
+                      name="manual_code"
+                      type="text"
+                      placeholder="Enter code if none above match"
+                      class="manual-code-input w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 transition focus:border-emerald-500/60 focus:outline-none focus:ring-4 focus:ring-emerald-500/20"
+                    />
+                  </div>
+                </div>
+
+                <div class="flex flex-wrap gap-3">
+                  <button type="submit" class="inline-flex items-center gap-2 rounded-2xl border border-emerald-400/50 bg-emerald-500 px-6 py-3 text-sm font-semibold text-white shadow-lg transition hover:bg-emerald-600">
+                    <span class="material-symbols-outlined text-base">check_circle</span>
+                    Save Training
+                  </button>
+                  <button type="submit" formaction="/" class="inline-flex items-center gap-2 rounded-2xl border border-zinc-700 bg-zinc-800/60 px-6 py-3 text-sm font-semibold text-zinc-200 transition hover:bg-zinc-700/60">
+                    <span class="material-symbols-outlined text-base">skip_next</span>
+                    Skip
+                  </button>
+                </div>
+              </div>
+              {% endif %}
+
+              <!-- Wizard Navigation (only in wizard mode) -->
+              {% if total %}
+              <div class="mt-6 flex flex-wrap items-center justify-between gap-3">
+                <div class="flex gap-3">
+                  {% if index > 1 %}
+                  <button type="submit" name="back" value="1" class="inline-flex items-center gap-2 rounded-2xl border border-zinc-700 bg-zinc-800/60 px-6 py-3 text-sm font-semibold text-zinc-200 transition hover:bg-zinc-700/60">
+                    <span class="material-symbols-outlined text-base">arrow_back</span>
+                    Back
+                  </button>
+                  {% endif %}
+                  <button type="submit" name="skip" value="1" class="inline-flex items-center gap-2 rounded-2xl border border-amber-400/50 bg-amber-500/20 px-6 py-3 text-sm font-semibold text-amber-200 transition hover:bg-amber-500/30">
+                    <span class="material-symbols-outlined text-base">skip_next</span>
+                    Skip
+                  </button>
+                </div>
+                <button type="submit" class="inline-flex items-center gap-2 rounded-2xl border border-primary/50 bg-primary px-6 py-3 text-sm font-semibold text-white shadow-lg transition hover:bg-primary/90">
+                  <span class="material-symbols-outlined text-base">arrow_forward</span>
+                  {% if index < total %}Next{% else %}Finish{% endif %}
+                </button>
+              </div>
+              {% else %}
+              <!-- Normal Mode: New Query -->
+              <div class="mt-6">
+                <button type="submit" formaction="/" class="inline-flex items-center gap-2 rounded-2xl border border-primary/50 bg-primary px-6 py-3 text-sm font-semibold text-white shadow-lg transition hover:bg-primary/90">
+                  <span class="material-symbols-outlined text-base">refresh</span>
+                  New Query
+                </button>
+              </div>
+              {% endif %}
+            </form>
+          </div>
+        </section>
+        {% else %}
+        <!-- Search hero — primary entry point -->
+        <section class="flex min-h-[58vh] flex-col items-center justify-center px-4 text-center">
+          <div class="w-full max-w-3xl space-y-10 py-10">
+            <div class="space-y-4">
+              <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/15 text-primary">
+                <span class="material-symbols-outlined text-4xl">search</span>
+              </div>
+              <h2 class="text-3xl font-semibold text-white sm:text-4xl">Match a radiology exam code</h2>
+              <p class="text-base text-zinc-400">Type an exam description and RadMatcher finds the best code.</p>
+            </div>
+
+            <form method="post" id="heroSearchForm" class="space-y-4">
+              <div class="flex flex-col gap-3 sm:flex-row">
+                <input
+                  id="heroSearchInput"
+                  name="exam_description"
+                  type="text"
+                  placeholder="e.g. ct head w contrast, cr chest 2v, mri lumbar spine"
+                  class="flex-1 rounded-2xl border border-zinc-700 bg-zinc-950 px-6 py-5 text-lg text-zinc-100 shadow-xl transition focus:border-primary/60 focus:outline-none focus:ring-4 focus:ring-primary/20"
+                  autocomplete="off"
+                  autofocus
+                />
+                <select
+                  name="manual_modality"
+                  class="rf-select rounded-2xl border border-zinc-700 bg-zinc-950 px-5 py-5 text-base text-zinc-100 transition focus:border-primary/60 focus:outline-none focus:ring-4 focus:ring-primary/20"
+                >
+                  <option value="" selected>Auto</option>
+                  <option value="XR">XR/CR</option>
+                  <option value="CT">CT</option>
+                  <option value="MR">MR</option>
+                  <option value="US">US</option>
+                  <option value="MG">MG</option>
+                  <option value="NM">NM</option>
+                  <option value="RF">RF</option>
+                  <option value="XA">XA</option>
+                  <option value="BMD">BMD</option>
+                  <option value="PT">PT</option>
+                </select>
+                <button type="submit" class="inline-flex items-center justify-center gap-2 rounded-2xl border border-primary/50 bg-primary px-8 py-5 text-base font-semibold text-white shadow-lg transition hover:bg-primary/90">
+                  <span class="material-symbols-outlined">search</span>
+                  Match
+                </button>
+              </div>
+            </form>
+
+            <div class="space-y-3">
+              <p class="text-[11px] font-semibold uppercase tracking-[0.3em] text-zinc-500">Try an example</p>
+              <div class="flex flex-wrap items-center justify-center gap-2">
+                {% for example in ['CT HEAD W CONTRAST', 'CR CHEST 2V', 'MRI LUMBAR SPINE', 'US ABDOMEN COMPLETE', 'XR KNEE LEFT'] %}
+                <button type="button" onclick="runExample('{{ example }}')" class="rounded-full border border-zinc-700 bg-zinc-900/60 px-4 py-2 text-sm text-zinc-300 transition hover:border-primary/50 hover:bg-zinc-800/60 hover:text-white">
+                  {{ example }}
+                </button>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+        </section>
+        {% endif %}
+      </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-zinc-800 bg-zinc-900/50 px-6 py-4 text-[11px] uppercase tracking-[0.35em] text-zinc-400 backdrop-blur lg:px-10">
+      <div class="mx-auto max-w-6xl">
+        <div class="flex flex-col gap-2 text-center md:flex-row md:items-center md:justify-between">
+          <p>Free to use · No resale · Apache 2.0 + Commons Clause</p>
+          <p>RadMatcher v{{ version }}</p>
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Training Auth Modal -->
+  <div id="trainingAuthModal" class="modal-overlay">
+    <div class="modal-content max-w-md">
+      <header class="flex items-center justify-between border-b border-zinc-800 px-6 py-4">
+        <h3 class="text-lg font-semibold text-white">Enter Training Mode</h3>
+        <button onclick="closeTrainingAuth()" class="rounded-lg p-1 text-zinc-400 transition hover:bg-zinc-800/60 hover:text-white">
+          <span class="material-symbols-outlined text-xl">close</span>
+        </button>
+      </header>
+      <div class="px-6 py-5">
+        <form method="post" action="/set_training_mode">
+          <input type="hidden" name="enter_training" value="1">
+          <div class="space-y-4">
+            <div>
+              <label class="mb-2 block text-xs font-medium uppercase tracking-[0.3em] text-zinc-400">Password</label>
+              <input
+                name="training_password"
+                type="password"
+                class="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 transition focus:border-primary/60 focus:outline-none focus:ring-4 focus:ring-primary/20"
+                autofocus
+              />
+            </div>
+            <div class="flex gap-3">
+              <button type="submit" class="inline-flex items-center gap-2 rounded-2xl border border-primary/50 bg-primary px-6 py-3 text-sm font-semibold text-white shadow-lg transition hover:bg-primary/90">
+                <span class="material-symbols-outlined text-base">login</span>
+                Enter
+              </button>
+              <button type="button" onclick="closeTrainingAuth()" class="inline-flex items-center gap-2 rounded-2xl border border-zinc-700 bg-zinc-800/60 px-6 py-3 text-sm font-semibold text-zinc-200 transition hover:bg-zinc-700/60">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Code Legend Modal -->
+  <div id="codeLegendModal" class="modal-overlay">
+    <div class="modal-content">
+      <header class="flex items-center justify-between border-b border-zinc-800 px-6 py-4">
+        <div>
+          <h3 class="text-lg font-semibold text-white">Code Legend</h3>
+          <p class="text-xs text-zinc-400">Browse all available codes</p>
+        </div>
+        <button onclick="closeCodeLegend()" class="rounded-lg p-1 text-zinc-400 transition hover:bg-zinc-800/60 hover:text-white">
+          <span class="material-symbols-outlined text-xl">close</span>
+        </button>
+      </header>
+      <div class="px-6 py-4 space-y-3">
+        <input
+          id="codeLegendSearch"
+          type="text"
+          placeholder="Search codes or descriptions..."
+          onkeyup="filterCodeLegend()"
+          class="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 transition focus:border-primary/60 focus:outline-none focus:ring-4 focus:ring-primary/20"
+        />
+        <div class="flex flex-wrap items-center gap-2 text-xs">
+          <span class="text-zinc-400 uppercase tracking-[0.3em] text-[10px]">Filter</span>
+          <button type="button" class="code-legend-filter rounded-full border border-primary/40 bg-primary/20 px-3 py-1 text-primary" data-modality="ALL" onclick="setCodeLegendModality('ALL')">All</button>
+          <button type="button" class="code-legend-filter rounded-full border border-zinc-800 bg-zinc-900/50 px-3 py-1 text-zinc-300 hover:bg-zinc-800/60" data-modality="CT" onclick="setCodeLegendModality('CT')">CT</button>
+          <button type="button" class="code-legend-filter rounded-full border border-zinc-800 bg-zinc-900/50 px-3 py-1 text-zinc-300 hover:bg-zinc-800/60" data-modality="MR" onclick="setCodeLegendModality('MR')">MR</button>
+          <button type="button" class="code-legend-filter rounded-full border border-zinc-800 bg-zinc-900/50 px-3 py-1 text-zinc-300 hover:bg-zinc-800/60" data-modality="US" onclick="setCodeLegendModality('US')">US</button>
+          <button type="button" class="code-legend-filter rounded-full border border-zinc-800 bg-zinc-900/50 px-3 py-1 text-zinc-300 hover:bg-zinc-800/60" data-modality="XR" onclick="setCodeLegendModality('XR')">XR</button>
+          <button type="button" class="code-legend-filter rounded-full border border-zinc-800 bg-zinc-900/50 px-3 py-1 text-zinc-300 hover:bg-zinc-800/60" data-modality="MG" onclick="setCodeLegendModality('MG')">MG</button>
+          <button type="button" class="code-legend-filter rounded-full border border-zinc-800 bg-zinc-900/50 px-3 py-1 text-zinc-300 hover:bg-zinc-800/60" data-modality="NM" onclick="setCodeLegendModality('NM')">NM</button>
+          <button type="button" class="code-legend-filter rounded-full border border-zinc-800 bg-zinc-900/50 px-3 py-1 text-zinc-300 hover:bg-zinc-800/60" data-modality="RF" onclick="setCodeLegendModality('RF')">RF</button>
+          <button type="button" class="code-legend-filter rounded-full border border-zinc-800 bg-zinc-900/50 px-3 py-1 text-zinc-300 hover:bg-zinc-800/60" data-modality="XA" onclick="setCodeLegendModality('XA')">XA</button>
+          <button type="button" class="code-legend-filter rounded-full border border-zinc-800 bg-zinc-900/50 px-3 py-1 text-zinc-300 hover:bg-zinc-800/60" data-modality="PT" onclick="setCodeLegendModality('PT')">PT</button>
+        </div>
+      </div>
+      <div class="flex-1 overflow-y-auto px-6 pb-6">
+        <div id="codeLegendContent" class="text-sm">
+          <div class="flex items-center justify-center py-12 text-zinc-400">
+            <span class="material-symbols-outlined animate-spin text-2xl">progress_activity</span>
+            <span class="ml-2">Loading codes...</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Code Set Manager Modal -->
+  <div id="codeSetModal" class="modal-overlay">
+    <div class="modal-content max-w-5xl">
+      <header class="flex items-center justify-between border-b border-zinc-800 px-6 py-4">
+        <div>
+          <h3 class="text-lg font-semibold text-white">Code Set</h3>
+          <p class="text-xs text-zinc-400">Define the exam codes RadMatcher matches against</p>
+        </div>
+        <button onclick="closeCodeSet()" class="rounded-lg p-1 text-zinc-400 transition hover:bg-zinc-800/60 hover:text-white">
+          <span class="material-symbols-outlined text-xl">close</span>
+        </button>
+      </header>
+
+      <!-- Toolbar -->
+      <div class="border-b border-zinc-800 px-6 py-4 space-y-3">
+        <div class="flex flex-wrap items-center gap-2">
+          <button type="button" onclick="showAddCodeForm()" class="inline-flex items-center gap-2 rounded-xl border border-primary/50 bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary/90">
+            <span class="material-symbols-outlined text-base">add</span> Add code
+          </button>
+          <button type="button" onclick="document.getElementById('codeSetUploadInput').click()" class="inline-flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-800/60 px-4 py-2 text-sm font-semibold text-zinc-200 transition hover:bg-zinc-700/60">
+            <span class="material-symbols-outlined text-base">upload_file</span> Upload CSV
+          </button>
+          <select id="codeSetUploadMode" class="rf-select rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 transition focus:border-primary/60 focus:outline-none focus:ring-4 focus:ring-primary/20">
+            <option value="replace">Replace all</option>
+            <option value="append">Append new</option>
+          </select>
+          <input id="codeSetUploadInput" type="file" accept=".csv" class="hidden" onchange="uploadCodeSet(this)">
+          <a href="/api/codes/template" class="inline-flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-800/60 px-4 py-2 text-sm font-semibold text-zinc-200 transition hover:bg-zinc-700/60">
+            <span class="material-symbols-outlined text-base">download</span> Template
+          </a>
+          <button type="button" onclick="generateVariations()" class="inline-flex items-center gap-2 rounded-xl border border-emerald-400/40 bg-emerald-500/15 px-4 py-2 text-sm font-semibold text-emerald-200 transition hover:bg-emerald-500/25">
+            <span class="material-symbols-outlined text-base">auto_awesome</span> Generate variations
+          </button>
+          <button type="button" onclick="deleteAllCodes()" class="ml-auto inline-flex items-center gap-2 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-300 transition hover:bg-red-500/20">
+            <span class="material-symbols-outlined text-base">delete_forever</span> Delete all
+          </button>
+        </div>
+        <input
+          id="codeSetSearch"
+          type="text"
+          placeholder="Search codes or descriptions..."
+          onkeyup="filterCodeSet()"
+          class="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 transition focus:border-primary/60 focus:outline-none focus:ring-4 focus:ring-primary/20"
+        />
+        <div id="codeSetStatus" class="hidden rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-2.5 text-xs text-zinc-300"></div>
+      </div>
+
+      <!-- Add / edit form -->
+      <div id="codeSetForm" class="hidden border-b border-zinc-800 bg-zinc-900/40 px-6 py-4">
+        <input type="hidden" id="cf_editId" value="-1">
+        <div class="grid gap-3 md:grid-cols-2">
+          <div>
+            <label class="mb-1 block text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-400">Code *</label>
+            <input id="cf_Code" type="text" class="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 transition focus:border-primary/60 focus:outline-none focus:ring-4 focus:ring-primary/20">
+          </div>
+          <div>
+            <label class="mb-1 block text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-400">Description *</label>
+            <input id="cf_description" type="text" class="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 transition focus:border-primary/60 focus:outline-none focus:ring-4 focus:ring-primary/20">
+          </div>
+          <div>
+            <label class="mb-1 block text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-400">Modality</label>
+            <select id="cf_modality" class="rf-select w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 transition focus:border-primary/60 focus:outline-none focus:ring-4 focus:ring-primary/20">
+              <option value="">— Select —</option>
+              <option value="CT">CT</option>
+              <option value="MR">MR</option>
+              <option value="XR">XR</option>
+              <option value="US">US</option>
+              <option value="MG">MG</option>
+              <option value="NM">NM</option>
+              <option value="RF">RF</option>
+              <option value="XA">XA</option>
+              <option value="FL">FL (Fluoroscopy)</option>
+              <option value="IR">IR (Interventional)</option>
+              <option value="PT">PT (PET)</option>
+              <option value="BMD">BMD (Bone Density)</option>
+            </select>
+          </div>
+          <div>
+            <label class="mb-1 block text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-400">Laterality</label>
+            <select id="cf_Laterality" class="rf-select w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 transition focus:border-primary/60 focus:outline-none focus:ring-4 focus:ring-primary/20">
+              <option value="N/A">N/A (none)</option>
+              <option value="LEFT">Left</option>
+              <option value="RIGHT">Right</option>
+              <option value="BILATERAL">Bilateral</option>
+            </select>
+          </div>
+          <div>
+            <label class="mb-1 block text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-400">Contrast</label>
+            <select id="cf_Contrast" class="rf-select w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 transition focus:border-primary/60 focus:outline-none focus:ring-4 focus:ring-primary/20">
+              <option value="N/A">None (N/A)</option>
+              <option value="WC">With contrast (WC)</option>
+              <option value="WOC">Without contrast (WOC)</option>
+              <option value="WWOC">With &amp; without (WWOC)</option>
+            </select>
+          </div>
+          <div>
+            <label class="mb-1 block text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-400">Views (XR)</label>
+            <input id="cf_XRViews" type="number" min="0" step="1" placeholder="1" class="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 transition focus:border-primary/60 focus:outline-none focus:ring-4 focus:ring-primary/20">
+          </div>
+          <div class="md:col-span-2">
+            <label class="mb-1 block text-[11px] font-semibold uppercase tracking-[0.2em] text-zinc-400">
+              Body parts <span class="font-normal normal-case tracking-normal text-zinc-500">— add one or more</span>
+            </label>
+            <div class="rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2">
+              <div id="cf_bodyRegionChips" class="flex flex-wrap gap-2 empty:hidden mb-2"></div>
+              <select id="cf_bodyRegionPicker" onchange="addBodyRegionFromPicker()" class="rf-select w-full rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-sm text-zinc-100 transition focus:border-primary/60 focus:outline-none focus:ring-4 focus:ring-primary/20">
+                <option value="">+ Add body part…</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="mt-3 flex gap-2">
+          <button type="button" onclick="saveCodeForm()" class="inline-flex items-center gap-2 rounded-xl border border-primary/50 bg-primary px-5 py-2 text-sm font-semibold text-white transition hover:bg-primary/90">
+            <span class="material-symbols-outlined text-base">save</span> Save code
+          </button>
+          <button type="button" onclick="hideCodeForm()" class="inline-flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-800/60 px-5 py-2 text-sm font-semibold text-zinc-200 transition hover:bg-zinc-700/60">
+            Cancel
+          </button>
+        </div>
+      </div>
+
+      <div class="flex-1 overflow-y-auto px-6 pb-6 pt-4">
+        <div id="codeSetContent" class="text-sm">
+          <div class="flex items-center justify-center py-12 text-zinc-400">
+            <span class="material-symbols-outlined animate-spin text-2xl">progress_activity</span>
+            <span class="ml-2">Loading codes...</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Training Data Manager Modal -->
+  <div id="trainingDataModal" class="modal-overlay">
+    <div class="modal-content">
+      <header class="flex items-center justify-between border-b border-zinc-800 px-6 py-4">
+        <div>
+          <h3 class="text-lg font-semibold text-white">Training Data Manager</h3>
+          <p class="text-xs text-zinc-400">View and edit exam mappings</p>
+        </div>
+        <button onclick="closeTrainingData()" class="rounded-lg p-1 text-zinc-400 transition hover:bg-zinc-800/60 hover:text-white">
+          <span class="material-symbols-outlined text-xl">close</span>
+        </button>
+      </header>
+      <div class="px-6 py-4">
+        <input
+          id="trainingDataSearch"
+          type="text"
+          placeholder="Search original descriptions..."
+          onkeyup="filterTrainingData()"
+          class="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 transition focus:border-primary/60 focus:outline-none focus:ring-4 focus:ring-primary/20"
+        />
+      </div>
+      <div class="flex-1 overflow-y-auto px-6 pb-6">
+        <div id="trainingDataContent" class="text-sm">
+          <div class="flex items-center justify-center py-12 text-zinc-400">
+            <span class="material-symbols-outlined animate-spin text-2xl">progress_activity</span>
+            <span class="ml-2">Loading training data...</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Match History Modal -->
+  <div id="matchHistoryModal" class="modal-overlay">
+    <div class="modal-content">
+      <header class="flex items-center justify-between border-b border-zinc-800 px-6 py-4">
+        <div>
+          <h3 class="text-lg font-semibold text-white">Match History</h3>
+          <p class="text-xs text-zinc-400">Recent API match calls and corrections</p>
+        </div>
+        <button onclick="closeMatchHistory()" class="rounded-lg p-1 text-zinc-400 transition hover:bg-zinc-800/60 hover:text-white">
+          <span class="material-symbols-outlined text-xl">close</span>
+        </button>
+      </header>
+      <div class="px-6 py-4 space-y-3">
+        <input
+          id="matchHistorySearch"
+          type="text"
+          placeholder="Search query, code, or description..."
+          onkeyup="filterMatchHistory()"
+          class="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 transition focus:border-primary/60 focus:outline-none focus:ring-4 focus:ring-primary/20"
+        />
+        <div class="flex flex-wrap items-center justify-between gap-3 text-xs text-zinc-400">
+          <div class="flex items-center gap-3">
+            <a href="/api/match_history/export_ml" class="flex items-center gap-1 rounded-full border border-zinc-800 bg-zinc-900/50 px-3 py-1 hover:bg-zinc-800/60 transition">
+              <span class="material-symbols-outlined text-sm">download</span>
+              Export ML Matches
+            </a>
+          </div>
+          <div>
+            Showing <span id="matchHistoryCount">0</span> of <span id="matchHistoryTotal">0</span> matches.
+          </div>
+        </div>
+      </div>
+      <div class="flex-1 overflow-y-auto px-6 pb-6">
+        <div id="matchHistoryContent" class="text-sm">
+          <div class="flex items-center justify-center py-12 text-zinc-400">
+            <span class="material-symbols-outlined animate-spin text-2xl">progress_activity</span>
+            <span class="ml-2">Loading match history...</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bulk Matcher Modal -->
+  <div id="bulkUploadModal" class="modal-overlay">
+    <div class="modal-content max-w-2xl">
+      <header class="flex items-center justify-between border-b border-zinc-800 px-6 py-4">
+        <div>
+          <h3 class="text-lg font-semibold text-white">Bulk Matcher</h3>
+          <p class="text-xs text-zinc-400">Match a CSV of exam descriptions in one pass</p>
+        </div>
+        <button onclick="closeBulkUpload()" class="rounded-lg p-1 text-zinc-400 transition hover:bg-zinc-800/60 hover:text-white">
+          <span class="material-symbols-outlined text-xl">close</span>
+        </button>
+      </header>
+      <div class="px-6 py-5">
+        <div class="space-y-6">
+          <div class="rounded-xl border border-primary/30 bg-primary/10 p-4">
+            <div class="flex items-start gap-3">
+              <span class="material-symbols-outlined text-primary">info</span>
+              <div class="flex-1 text-sm text-zinc-200">
+                <p class="font-semibold mb-2">CSV Format</p>
+                <p class="text-xs text-zinc-300">Your CSV should have one or two columns:</p>
+                <ul class="mt-2 space-y-1 text-xs text-zinc-300">
+                  <li><strong>One column:</strong> exam_description</li>
+                  <li><strong>Two columns:</strong> exam_description,modality</li>
+                </ul>
+                <p class="mt-2 text-xs text-zinc-400">Example: <code class="bg-zinc-950 px-2 py-1 rounded">CT HEAD W CONTRAST,CT</code></p>
+              </div>
+            </div>
+          </div>
+
+          <form method="post" action="/" enctype="multipart/form-data">
+            <div class="space-y-4">
+              <div>
+                <label class="mb-2 block text-xs font-medium uppercase tracking-[0.3em] text-zinc-400">CSV File</label>
+                <input
+                  name="csv_file"
+                  type="file"
+                  accept=".csv"
+                  class="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 file:mr-4 file:rounded-lg file:border-0 file:bg-primary file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-primary/90"
+                  required
+                />
+              </div>
+
+              <div class="flex gap-3">
+                <button type="submit" class="inline-flex items-center gap-2 rounded-2xl border border-primary/50 bg-primary px-6 py-3 text-sm font-semibold text-white shadow-lg transition hover:bg-primary/90">
+                  <span class="material-symbols-outlined text-base">upload</span>
+                  Upload & Start Wizard
+                </button>
+                <button type="button" onclick="closeBulkUpload()" class="inline-flex items-center gap-2 rounded-2xl border border-zinc-700 bg-zinc-800/60 px-6 py-3 text-sm font-semibold text-zinc-200 transition hover:bg-zinc-700/60">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Review AI Modal -->
+  <div id="reviewAIModal" class="modal-overlay" onclick="if(event.target===this) closeReviewAI()">
+    <div class="modal-content">
+      <div class="flex items-center justify-between border-b border-zinc-800 px-6 py-4">
+        <h3 class="text-lg font-semibold text-white">Review AI Suggestions</h3>
+        <button type="button" onclick="closeReviewAI()" class="rounded-lg p-1.5 text-zinc-400 hover:text-white hover:bg-zinc-800/60"><span class="material-symbols-outlined">close</span></button>
+      </div>
+      <div class="modal-body px-6 py-4">
+        <p class="text-sm text-zinc-400 mb-4">Agree adds the AI suggestion to mappings. Disagree lets you enter the correct code.</p>
+        <div class="flex gap-2 mb-4">
+          <button type="button" onclick="agreeSelectedReview()" class="rounded-lg border border-emerald-500/50 bg-emerald-500/20 px-4 py-2 text-sm font-semibold text-emerald-200 hover:bg-emerald-500/30">Agree selected</button>
+          <button type="button" onclick="clearAllReview()" class="rounded-lg border border-zinc-600/50 bg-zinc-700/30 px-4 py-2 text-sm font-semibold text-zinc-200 hover:bg-zinc-700/50">Clear all</button>
+        </div>
+        <div id="reviewAIContent" class="space-y-3 max-h-[60vh] overflow-y-auto"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings Modal -->
+  <div id="settingsModal" class="modal-overlay">
+    <div class="modal-content max-w-lg">
+      <header class="flex items-center justify-between border-b border-zinc-800 px-6 py-4">
+        <div>
+          <h3 class="text-lg font-semibold text-white">Settings</h3>
+          <p class="text-xs text-zinc-400">Schedule training and tune defaults</p>
+        </div>
+        <button onclick="closeSettings()" class="rounded-lg p-1 text-zinc-400 transition hover:bg-zinc-800/60 hover:text-white">
+          <span class="material-symbols-outlined text-xl">close</span>
+        </button>
+      </header>
+      <div class="modal-body px-6 py-5">
+        <!-- LLM fallback (optional) - FIRST so always visible -->
+        <div class="rounded-xl border-2 border-amber-500/50 bg-amber-500/15 p-4 mb-5">
+          <p class="text-sm font-semibold text-amber-200">AI Suggestions (optional)</p>
+          <p class="text-xs text-zinc-400 mt-1">When the local match is weak, an LLM can suggest a code. Matching itself is 100% local — this is off by default.</p>
+          <div class="mt-4 grid gap-3">
+            <label class="flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-200">
+              <span>AI suggestions enabled</span>
+              <input id="settingLLMEnabled" type="checkbox" class="h-4 w-4 accent-primary">
+            </label>
+            <div>
+              <label class="mb-2 block text-xs font-medium uppercase tracking-[0.3em] text-zinc-400">Provider</label>
+              <select id="settingLLMProvider" onchange="onLLMProviderChange()" class="rf-select w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 transition focus:border-primary/60 focus:outline-none focus:ring-4 focus:ring-primary/20">
+                <option value="openai">OpenAI</option>
+                <option value="anthropic">Anthropic (Claude)</option>
+                <option value="gemini">Google (Gemini)</option>
+                <option value="openai_compatible">Self-hosted / OpenAI-compatible (Ollama, LM Studio, vLLM…)</option>
+              </select>
+            </div>
+            <div>
+              <label class="mb-2 block text-xs font-medium uppercase tracking-[0.3em] text-zinc-400">Model</label>
+              <input id="settingLLMModel" type="text" value="gpt-4o" class="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100">
+            </div>
+            <div id="settingLLMApiKeyWrap">
+              <label class="mb-2 block text-xs font-medium uppercase tracking-[0.3em] text-zinc-400">API Key</label>
+              <input id="settingLLMApiKey" type="password" placeholder="sk-..." class="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100">
+            </div>
+            <div id="settingLLMBaseUrlWrap" class="hidden">
+              <label class="mb-2 block text-xs font-medium uppercase tracking-[0.3em] text-zinc-400">Base URL</label>
+              <input id="settingLLMBaseUrl" type="text" placeholder="http://localhost:11434/v1" class="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100">
+              <p id="settingLLMHint" class="mt-1 text-xs text-zinc-500">Ollama: http://localhost:11434/v1 · LM Studio: http://localhost:1234/v1</p>
+            </div>
+          </div>
+        </div>
+        <div class="rounded-xl border border-primary/30 bg-primary/10 p-4 text-sm text-zinc-200">
+          <p class="font-semibold mb-1">Nightly Retraining</p>
+          <p class="text-xs text-zinc-300">Uses normal training settings. The app must be running at the scheduled time.</p>
+        </div>
+        <form id="settingsForm" class="mt-5 space-y-6" onsubmit="saveSettings(event)">
+          <div class="space-y-4">
+            <label class="flex items-center justify-between rounded-2xl border border-zinc-800 bg-zinc-900/50 px-4 py-3">
+              <div>
+                <p class="text-sm font-semibold text-white">Enable schedule</p>
+                <p class="text-xs text-zinc-400">Run once per day at the time below.</p>
+              </div>
+              <input id="scheduleEnabled" type="checkbox" class="h-5 w-5 accent-primary">
+            </label>
+            <div>
+              <label class="mb-2 block text-xs font-medium uppercase tracking-[0.3em] text-zinc-400">Run Time (Local)</label>
+              <input
+                id="scheduleTime"
+                type="time"
+                value="03:00"
+                class="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm text-zinc-100 transition focus:border-primary/60 focus:outline-none focus:ring-4 focus:ring-primary/20"
+                required
+              />
+            </div>
+          </div>
+
+          <div class="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+            <p class="text-xs font-semibold uppercase tracking-[0.3em] text-zinc-400">Training Defaults</p>
+            <div class="mt-4 grid gap-3">
+              <label class="flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-200">
+                <span>Use augmentation</span>
+                <input id="settingUseAugmentation" type="checkbox" class="h-4 w-4 accent-primary">
+              </label>
+              <label class="flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-200">
+                <span>Use synthetic examples</span>
+                <input id="settingUseSynthetic" type="checkbox" class="h-4 w-4 accent-primary">
+              </label>
+              <label class="flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-200">
+                <span>Use balancing</span>
+                <input id="settingUseBalancing" type="checkbox" class="h-4 w-4 accent-primary">
+              </label>
+              <label class="flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-200">
+                <span>Use validation split</span>
+                <input id="settingUseCrossValidation" type="checkbox" class="h-4 w-4 accent-primary">
+              </label>
+              <div>
+                <label class="mb-2 block text-xs font-medium uppercase tracking-[0.3em] text-zinc-400">CPU Cores (-1 = all)</label>
+                <input
+                  id="settingNJobs"
+                  type="number"
+                  min="-1"
+                  max="128"
+                  step="1"
+                  value="-1"
+                  class="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 transition focus:border-primary/60 focus:outline-none focus:ring-4 focus:ring-primary/20"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div class="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+            <p class="text-xs font-semibold uppercase tracking-[0.3em] text-zinc-400">Wizard Behavior</p>
+            <div class="mt-4 grid gap-3">
+              <label class="flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-950/80 px-3 py-2 text-sm text-zinc-200">
+                <span>Enable auto-approve</span>
+                <input id="settingAutoApproveEnabled" type="checkbox" class="h-4 w-4 accent-primary">
+              </label>
+              <div>
+                <label class="mb-2 block text-xs font-medium uppercase tracking-[0.3em] text-zinc-400">Auto-approve score</label>
+                <input
+                  id="settingAutoApproveScore"
+                  type="number"
+                  min="0"
+                  max="1000"
+                  step="1"
+                  value="400"
+                  class="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 transition focus:border-primary/60 focus:outline-none focus:ring-4 focus:ring-primary/20"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div class="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+            <p class="text-xs font-semibold uppercase tracking-[0.3em] text-zinc-400">Match Results</p>
+            <div class="mt-4 grid gap-3">
+              <label class="mb-2 block text-xs font-medium uppercase tracking-[0.3em] text-zinc-400">Max results (min 5)</label>
+              <input
+                id="settingMaxResults"
+                type="number"
+                min="5"
+                max="50"
+                step="1"
+                value="15"
+                class="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 transition focus:border-primary/60 focus:outline-none focus:ring-4 focus:ring-primary/20"
+              />
+              <label class="mb-2 block text-xs font-medium uppercase tracking-[0.3em] text-zinc-400">Minimum match score</label>
+              <input
+                id="settingMinMatchScore"
+                type="number"
+                min="0"
+                max="1000"
+                step="1"
+                value="300"
+                class="w-full rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-2.5 text-sm text-zinc-100 transition focus:border-primary/60 focus:outline-none focus:ring-4 focus:ring-primary/20"
+              />
+            </div>
+          </div>
+
+          <div id="settingsStatus" class="hidden rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-3 text-xs text-zinc-300"></div>
+          <div class="flex gap-3">
+            <button type="submit" class="inline-flex items-center gap-2 rounded-2xl border border-primary/50 bg-primary px-6 py-3 text-sm font-semibold text-white shadow-lg transition hover:bg-primary/90">
+              <span class="material-symbols-outlined text-base">save</span>
+              Save
+            </button>
+            <button type="button" onclick="closeSettings()" class="inline-flex items-center gap-2 rounded-2xl border border-zinc-700 bg-zinc-800/60 px-6 py-3 text-sm font-semibold text-zinc-200 transition hover:bg-zinc-700/60">
+              Close
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Term Replacements Modal -->
+  <div id="termReplacementsModal" class="modal-overlay">
+    <div class="modal-content max-w-2xl">
+      <header class="flex items-center justify-between border-b border-zinc-800 px-6 py-4">
+        <div>
+          <h3 class="text-lg font-semibold text-white">Term Overrides</h3>
+          <p class="text-xs text-zinc-400">Custom normalization rules (stored separately from matcher defaults)</p>
+        </div>
+        <button onclick="closeTermReplacements()" class="rounded-lg p-1 text-zinc-400 transition hover:bg-zinc-800/60 hover:text-white">
+          <span class="material-symbols-outlined text-xl">close</span>
+        </button>
+      </header>
+      <div class="modal-body px-6 py-5">
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-[0.3em] text-zinc-400">Overrides List</p>
+          <p class="text-xs text-zinc-400">Only custom rules show here.</p>
+        </div>
+        <p class="mt-2 text-xs text-zinc-400">Use regex (e.g., <code>\\bDIAG\\b</code>) or simple tokens like <code>DIAG</code>.</p>
+        <div class="mt-3 flex flex-wrap items-center justify-between gap-3">
+          <div class="flex flex-wrap gap-2">
+            <button type="button" onclick="saveTermReplacements()" class="inline-flex items-center gap-2 rounded-xl border border-emerald-400/40 bg-emerald-500/10 px-4 py-2 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-500/20">
+              Save Terms
+            </button>
+            <button type="button" onclick="loadTermReplacements()" class="inline-flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-800/60 px-4 py-2 text-xs font-semibold text-zinc-200 transition hover:bg-zinc-700/60">
+              Reload
+            </button>
+            <button type="button" onclick="addTermReplacementRow()" class="inline-flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-800/60 px-4 py-2 text-xs font-semibold text-zinc-200 transition hover:bg-zinc-700/60">
+              Add
+            </button>
+          </div>
+          <div id="termReplacementsStatus" class="hidden rounded-lg border border-zinc-800 bg-zinc-950/80 px-3 py-2 text-xs text-zinc-300"></div>
+        </div>
+        <div id="termReplacementsList" class="mt-4 space-y-2"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Training Progress Modal (deprecated - using header bar instead) -->
+  <div id="trainingProgressModal" class="modal-overlay hidden">
+    <div class="modal-content max-w-lg">
+      <header class="flex items-center justify-between border-b border-zinc-800 px-6 py-4">
+        <h3 class="text-lg font-semibold text-white">Retraining Model</h3>
+        <button id="trainingMinimizeBtn" onclick="minimizeTrainingProgress()" class="rounded-lg p-1 text-zinc-400 transition hover:bg-zinc-800/60 hover:text-white" title="Minimize - training continues in background">
+          <span class="material-symbols-outlined text-xl">minimize</span>
+        </button>
+      </header>
+      <div class="px-6 py-5">
+        <div class="space-y-4">
+          <!-- Progress bar -->
+          <div class="space-y-2">
+            <div class="flex items-center justify-between text-sm">
+              <span class="text-zinc-400">Progress</span>
+              <span class="font-semibold text-white" id="trainingProgressPercent">0%</span>
+            </div>
+            <div class="h-3 w-full rounded-full bg-zinc-800 overflow-hidden">
+              <div id="trainingProgressBar" class="h-full rounded-full bg-primary transition-all duration-300" style="width: 0%"></div>
+            </div>
+          </div>
+
+          <!-- Status message -->
+          <div class="rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-3">
+            <p class="text-sm text-zinc-300" id="trainingStatusMessage">Starting training...</p>
+          </div>
+
+          <!-- Info box about zero downtime -->
+          <div id="trainingInfoBox" class="rounded-xl border border-primary/30 bg-primary/10 p-4">
+            <div class="flex items-start gap-3">
+              <span class="material-symbols-outlined text-primary">info</span>
+              <div class="flex-1 text-sm text-zinc-200">
+                <p class="font-semibold">Zero Downtime Training</p>
+                <p class="mt-1 text-xs text-zinc-300">The API continues serving requests with the current model. You can close this dialog and continue working. The new model will be swapped in automatically when training completes.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Error state -->
+          <div id="trainingError" class="hidden rounded-xl border border-red-400/30 bg-red-500/10 p-4">
+            <div class="flex items-start gap-3">
+              <span class="material-symbols-outlined text-red-400">error</span>
+              <div class="flex-1">
+                <p class="font-semibold text-red-200">Training Failed</p>
+                <p class="mt-1 text-sm text-red-300" id="trainingErrorMessage"></p>
+              </div>
+            </div>
+            <div class="mt-4">
+              <button onclick="closeTrainingProgress()" class="inline-flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-800/60 px-4 py-2 text-sm font-semibold text-zinc-200 transition hover:bg-zinc-700/60">
+                Close
+              </button>
+            </div>
+          </div>
+
+          <!-- Success state -->
+          <div id="trainingSuccess" class="hidden rounded-xl border border-emerald-400/30 bg-emerald-500/10 p-4">
+            <div class="flex items-start gap-3">
+              <span class="material-symbols-outlined text-emerald-400">check_circle</span>
+              <div class="flex-1">
+                <p class="font-semibold text-emerald-200">Training Complete!</p>
+                <p class="mt-1 text-sm text-emerald-300">Model has been retrained and swapped in. All new requests use the updated model.</p>
+              </div>
+            </div>
+            <div class="mt-4">
+              <button onclick="closeTrainingProgress()" class="inline-flex items-center gap-2 rounded-xl border border-emerald-400/50 bg-emerald-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-600">
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Training Status Badge (deprecated - using header bar instead) -->
+  <div id="trainingStatusBadge" class="fixed bottom-4 right-4 z-50 hidden" style="display: none !important;">
+    <button onclick="openTrainingProgress()" class="group flex items-center gap-3 rounded-2xl border border-primary/50 bg-zinc-900/90 px-4 py-3 shadow-lg backdrop-blur transition hover:border-primary hover:bg-zinc-900">
+      <span class="material-symbols-outlined animate-spin text-xl text-primary">progress_activity</span>
+      <div class="text-left">
+        <p class="text-xs font-semibold text-white">Training in Progress</p>
+        <p class="text-xs text-zinc-400" id="trainingBadgeProgress">0%</p>
+      </div>
+      <span class="material-symbols-outlined text-zinc-400 transition group-hover:text-white">open_in_full</span>
+    </button>
+  </div>
+
+  <!-- Score Breakdown Modal -->
+  <div id="scoreBreakdownModal" class="modal-overlay">
+    <div class="modal-content max-w-2xl">
+      <header class="flex items-center justify-between border-b border-zinc-800 px-6 py-4">
+        <div>
+          <div class="flex items-center gap-2">
+            <h3 class="text-lg font-semibold text-white">Score Breakdown</h3>
+            <span id="scoreBreakdownExact" class="hidden pill pill-emerald" title="This query exactly matches a verified mapping in your training data">
+              <span class="material-symbols-outlined text-sm">star</span>
+              Direct match
+            </span>
+          </div>
+          <p class="text-xs text-zinc-400" id="scoreBreakdownSubtitle"></p>
+        </div>
+        <button onclick="closeScoreBreakdown()" class="rounded-lg p-1 text-zinc-400 transition hover:bg-zinc-800/60 hover:text-white">
+          <span class="material-symbols-outlined text-xl">close</span>
+        </button>
+      </header>
+      <div class="px-6 py-5">
+        <div class="space-y-4">
+          <div class="rounded-xl border border-primary/30 bg-primary/10 p-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-xs uppercase tracking-wider text-zinc-400">Final Score</p>
+                <p class="text-2xl font-bold text-white" id="scoreBreakdownScore"></p>
+              </div>
+              <div>
+                <p class="text-xs uppercase tracking-wider text-zinc-400">Method</p>
+                <p class="text-sm font-semibold text-zinc-300" id="scoreBreakdownMethod"></p>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <h4 class="mb-3 text-sm font-semibold uppercase tracking-wider text-zinc-400">Feature Scores</h4>
+            <div class="space-y-2" id="scoreBreakdownContent">
+              <!-- Populated by JavaScript -->
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      document.addEventListener('focusin', function(event) {
+        if (event.target && event.target.classList.contains('manual-code-input')) {
+          window.lastManualCodeInput = event.target;
+        }
+      });
+
+      // Animate score bars
+      setTimeout(() => {
+        document.querySelectorAll("[id^='score-bar-']").forEach(el => {
+          const targetWidth = el.getAttribute("data-target");
+          el.style.width = targetWidth + "%";
+        });
+      }, 120);
+
+      // Preload heavy data so modals open instantly
+      setTimeout(() => {
+        if (!codeLegendLoaded) {
+          loadCodeLegend();
+        }
+        if (!trainingDataLoaded) {
+          loadTrainingData();
+        }
+      }, 500);
+
+      // Fade out flash messages
+      setTimeout(() => {
+        document.querySelectorAll(".flash-message").forEach(msg => {
+          msg.style.opacity = "0";
+          msg.style.transform = "translateY(-6px)";
+          setTimeout(() => msg.remove(), 400);
+        });
+      }, 5500);
+
+      // Fetch AI suggestion live when match score is low (LLM fallback)
+      fetchLiveAISuggestion();
+
+      // Load stats on page load and refresh every 30 seconds
+      loadStats();
+      setInterval(loadStats, 30000);
+    });
+
+    function loadStats() {
+      fetch('/api/stats')
+        .then(response => response.json())
+        .then(data => {
+          const avgMin = document.getElementById('statsAvgPerMin');
+          const avgHour = document.getElementById('statsAvgPerHour');
+          if (avgMin) {
+            avgMin.textContent = data.avg_per_minute || 0;
+          }
+          if (avgHour) {
+            avgHour.textContent = data.avg_per_hour || 0;
+          }
+        })
+        .catch(error => {
+          console.error('Failed to load stats:', error);
+        });
+    }
+
+    function openTrainingAuth() {
+      document.getElementById('trainingAuthModal').classList.add('active');
+    }
+
+    function closeTrainingAuth() {
+      document.getElementById('trainingAuthModal').classList.remove('active');
+    }
+
+    let codeLegendData = [];
+    let codeLegendLoaded = false;
+    let codeLegendActiveModality = 'ALL';
+
+    function openCodeLegend() {
+      document.getElementById('codeLegendModal').classList.add('active');
+      setCodeLegendModality(codeLegendActiveModality || 'ALL');
+      if (!codeLegendLoaded) {
+        loadCodeLegend();
+      }
+    }
+
+    function closeCodeLegend() {
+      document.getElementById('codeLegendModal').classList.remove('active');
+    }
+
+    function loadCodeLegend() {
+      const startTime = Date.now();
+      fetch('/api/code_legend')
+        .then(res => res.json())
+        .then(data => {
+          const loadTime = ((Date.now() - startTime) / 1000).toFixed(2);
+          codeLegendData = data;
+          codeLegendLoaded = true;
+          renderCodeLegend(data);
+          console.log(`Loaded ${data.length} codes in ${loadTime}s`);
+        })
+        .catch(err => {
+          document.getElementById('codeLegendContent').innerHTML =
+            '<div class="text-center text-red-400 py-12">Error loading codes</div>';
+        });
+    }
+
+    function renderCodeLegend(data) {
+      const html = data.map(row => `
+        <div class="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 hover:bg-zinc-800/60 transition code-legend-row cursor-pointer"
+             data-searchable="${row.code} ${row.description}"
+             data-modality="${row.modality || ''}"
+             title="Click to use this code"
+             onclick="applyCodeFromLegend('${row.code}')">
+          <div class="flex items-start justify-between gap-4">
+            <div class="flex-1">
+              <p class="font-semibold text-white">${row.code}</p>
+              <p class="text-zinc-300 text-xs mt-1">${row.description}</p>
+            </div>
+            <div class="flex gap-2">
+              ${row.modality ? `<span class="chip">${row.modality}</span>` : ''}
+            </div>
+          </div>
+        </div>
+      `).join('');
+
+      document.getElementById('codeLegendContent').innerHTML =
+        `<div class="space-y-2">${html}</div>`;
+      filterCodeLegend();
+    }
+
+    function setCodeLegendModality(modality) {
+      codeLegendActiveModality = modality;
+      document.querySelectorAll('.code-legend-filter').forEach(button => {
+        const isActive = button.getAttribute('data-modality') === modality;
+        if (isActive) {
+          button.classList.add('border-primary/40', 'bg-primary/20', 'text-primary');
+          button.classList.remove('border-zinc-800', 'bg-zinc-900/50', 'text-zinc-300');
+        } else {
+          button.classList.remove('border-primary/40', 'bg-primary/20', 'text-primary');
+          button.classList.add('border-zinc-800', 'bg-zinc-900/50', 'text-zinc-300');
+        }
+      });
+      filterCodeLegend();
+    }
+
+    function filterCodeLegend() {
+      const search = document.getElementById('codeLegendSearch').value.toUpperCase();
+      const rows = document.querySelectorAll('.code-legend-row');
+
+      rows.forEach(row => {
+        const searchable = row.getAttribute('data-searchable').toUpperCase();
+        const modality = (row.getAttribute('data-modality') || '').toUpperCase();
+        const modalityMatch = codeLegendActiveModality === 'ALL' || modality === codeLegendActiveModality;
+        if (searchable.includes(search) && modalityMatch) {
+          row.style.display = '';
+        } else {
+          row.style.display = 'none';
+        }
+      });
+    }
+
+    function openCodeLegendForHistory(rowId) {
+      const input = document.querySelector(`.history-code-input[data-id="${rowId}"]`);
+      if (input) {
+        window.lastManualCodeInput = input;
+        input.focus();
+      }
+      openCodeLegend();
+    }
+
+    function selectMatchCode(code) {
+      const selectedInput = document.getElementById('selectedCodeInput');
+      if (selectedInput) {
+        selectedInput.value = code;
+      }
+      const display = document.getElementById('selectedCodeDisplay');
+      if (display) {
+        display.textContent = code;
+      }
+      document.querySelectorAll('.manual-code-input').forEach(input => {
+        input.value = '';
+      });
+    }
+
+    function useMatchCode(code) {
+      selectMatchCode(code);
+      const form = document.getElementById('matchForm');
+      if (form) {
+        form.submit();
+      }
+    }
+
+    function applyCodeFromLegend(code) {
+      const active = document.activeElement;
+      if (active && active.classList.contains('manual-code-input')) {
+        active.value = code;
+        active.focus();
+      } else {
+        const lastInput = window.lastManualCodeInput;
+        if (lastInput && document.body.contains(lastInput)) {
+          lastInput.value = code;
+          lastInput.focus();
+        } else {
+          const activeModal = document.querySelector('.modal-overlay.active');
+          const modalInput = activeModal ? activeModal.querySelector('.manual-code-input') : null;
+          if (modalInput) {
+            modalInput.value = code;
+            modalInput.focus();
+          } else {
+            const inputs = document.querySelectorAll('.manual-code-input');
+            if (!inputs.length) {
+              return;
+            }
+            inputs.forEach(input => {
+              input.value = code;
+            });
+          }
+        }
+      }
+      const selectedInput = document.getElementById('selectedCodeInput');
+      if (selectedInput) {
+        selectedInput.value = '';
+      }
+      const display = document.getElementById('selectedCodeDisplay');
+      if (display) {
+        display.textContent = code;
+      }
+    }
+
+    // Training Data Manager
+    let trainingDataLoaded = false;
+    let trainingDataCache = [];
+
+    function openTrainingData() {
+      document.getElementById('trainingDataModal').classList.add('active');
+      if (!trainingDataLoaded) {
+        loadTrainingData();
+      }
+    }
+
+    function closeTrainingData() {
+      document.getElementById('trainingDataModal').classList.remove('active');
+    }
+
+    function loadTrainingData() {
+      const startTime = Date.now();
+      fetch('/api/training_data')
+        .then(res => res.json())
+        .then(data => {
+          const loadTime = ((Date.now() - startTime) / 1000).toFixed(2);
+          trainingDataCache = data;
+          trainingDataLoaded = true;
+          renderTrainingData(data);
+          console.log(`Loaded ${data.length} training entries in ${loadTime}s`);
+        })
+        .catch(err => {
+          document.getElementById('trainingDataContent').innerHTML =
+            '<div class="text-center text-red-400 py-12">Error loading training data</div>';
+        });
+    }
+
+    function renderTrainingData(data) {
+      if (data.length === 0) {
+        document.getElementById('trainingDataContent').innerHTML =
+          '<div class="text-center text-zinc-400 py-12">No training data found</div>';
+        return;
+      }
+
+      const html = data.map(row => `
+        <div class="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 hover:bg-zinc-800/60 transition training-data-row" data-id="${row.id}"
+             data-searchable="${row.original}">
+          <div class="flex items-start justify-between gap-4">
+            <div class="flex-1 space-y-2">
+              <p class="font-semibold text-white text-sm">${row.original}</p>
+              <div class="flex items-center gap-2">
+                <span class="chip">${row.code}</span>
+                ${row.description ? `<span class="text-xs text-zinc-300">${row.description}</span>` : ''}
+              </div>
+              ${row.note ? `<p class="text-xs text-zinc-400 italic">${row.note}</p>` : ''}
+            </div>
+            <div class="flex gap-2">
+              <button onclick="editTrainingData(${row.id})" class="rounded-lg border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary transition hover:bg-primary/20">
+                <span class="material-symbols-outlined text-sm">edit</span>
+              </button>
+              <button onclick="deleteTrainingDataConfirm(${row.id})" class="rounded-lg border border-red-400/40 bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-200 transition hover:bg-red-500/20">
+                <span class="material-symbols-outlined text-sm">delete</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      `).join('');
+
+      document.getElementById('trainingDataContent').innerHTML =
+        `<div class="space-y-2">${html}</div>`;
+    }
+
+    function filterTrainingData() {
+      const search = document.getElementById('trainingDataSearch').value.toUpperCase();
+      const rows = document.querySelectorAll('.training-data-row');
+
+      rows.forEach(row => {
+        const searchable = row.getAttribute('data-searchable').toUpperCase();
+        if (searchable.includes(search)) {
+          row.style.display = '';
+        } else {
+          row.style.display = 'none';
+        }
+      });
+    }
+
+    function editTrainingData(rowId) {
+      const newCode = prompt('Enter new code:');
+      if (!newCode) return;
+
+      fetch(`/api/training_data/${rowId}`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({code: newCode.trim()})
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          trainingDataLoaded = false;
+          loadTrainingData();
+        }
+      })
+      .catch(err => alert('Error updating training data'));
+    }
+
+    function deleteTrainingDataConfirm(rowId) {
+      if (!confirm('Delete this training data entry?')) return;
+
+      fetch(`/api/training_data/${rowId}`, {method: 'DELETE'})
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            trainingDataLoaded = false;
+            loadTrainingData();
+          }
+        })
+        .catch(err => alert('Error deleting training data'));
+    }
+
+    // Match History
+    const hasResult = {% if result %}true{% else %}false{% endif %};
+    let matchHistoryLoaded = false;
+    let matchHistoryCache = [];
+    let matchHistoryLogTimer = null;
+
+    function openMatchHistory() {
+      document.getElementById('matchHistoryModal').classList.add('active');
+      document.getElementById('matchHistorySearch').value = '';
+      if (!matchHistoryLoaded) {
+        loadMatchHistory();
+      }
+    }
+
+    function closeMatchHistory() {
+      document.getElementById('matchHistoryModal').classList.remove('active');
+      matchHistoryLoaded = false;
+    }
+
+    function fetchLiveAISuggestion() {
+      const block = document.getElementById('aiSuggestionBlock');
+      const content = document.getElementById('aiSuggestionContent');
+      if (!block || !content) return;
+      const query = block.getAttribute('data-query');
+      const matchScore = block.getAttribute('data-match-score') || 0;
+      if (!query) return;
+
+      fetch('/api/llm-review/suggest-and-queue', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: query, match_score: parseInt(matchScore, 10) || 0 })
+      })
+        .then(res => res.json().then(data => ({ ok: res.ok, data: data })))
+        .then(result => {
+          if (result.ok && result.data.suggested_code) {
+            const d = result.data;
+            const confPct = d.confidence != null ? Math.round((d.confidence || 0) * 100) : null;
+            content.innerHTML = `
+              <div class="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+                <div class="flex items-start justify-between gap-4">
+                  <div>
+                    <p class="text-lg font-semibold text-white">
+                      ${escapeHtml(d.suggested_code)}
+                      ${d.suggested_modality ? '<span class="ml-2 align-middle rounded-md border border-zinc-700 bg-zinc-800/60 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-zinc-200">' + escapeHtml(d.suggested_modality) + '</span>' : ''}
+                    </p>
+                    <p class="text-sm text-zinc-300 mt-1">${escapeHtml(d.suggested_description || '')}</p>
+                    ${confPct != null ? '<p class="text-xs text-zinc-500 mt-0.5">AI confidence: ' + confPct + '%</p>' : ''}
+                  </div>
+                  <div class="flex gap-2">
+                    <button type="button" onclick="agreeInlineAI('${escapeHtml(d.id)}')" class="rounded-lg border border-emerald-500/50 bg-emerald-500/20 px-4 py-2 text-sm font-semibold text-emerald-200 hover:bg-emerald-500/30">Agree</button>
+                    <button type="button" onclick="disagreeInlineAI('${escapeHtml(d.id)}')" class="rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-200 hover:bg-red-500/20">Disagree</button>
+                  </div>
+                </div>
+              </div>
+            `;
+            if (typeof loadReviewAICount === 'function') loadReviewAICount();
+          } else {
+            content.innerHTML = '<p class="text-sm text-amber-200/80">' + escapeHtml(result.data.error || 'Could not get AI suggestion.') + '</p>';
+          }
+        })
+        .catch(err => {
+          content.innerHTML = '<p class="text-sm text-red-400">Error: ' + escapeHtml(err.message) + '</p>';
+        });
+    }
+    function agreeInlineAI(id) {
+      fetch('/api/llm-review/agree', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: [id] })
+      })
+        .then(res => res.json().then(data => ({ ok: res.ok, data: data })))
+        .then(result => {
+          if (result.ok) {
+            if (typeof flash === 'function') flash('Agreed. Added to mappings.', 'success');
+            else alert('Agreed. Added to mappings.');
+            const content = document.getElementById('aiSuggestionContent');
+            if (content) content.innerHTML = '<p class="text-sm text-emerald-300">Added to mappings.</p>';
+            if (typeof loadReviewAICount === 'function') loadReviewAICount();
+          }
+        })
+        .catch(err => { if (typeof flash === 'function') flash('Error: ' + err.message, 'error'); });
+    }
+    function disagreeInlineAI(id) {
+      const correctCode = prompt('Enter the correct code:');
+      if (correctCode == null || !correctCode.trim()) return;
+      fetch('/api/llm-review/disagree', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: id, correct_code: correctCode.trim() })
+      })
+        .then(res => res.json().then(data => ({ ok: res.ok, data: data })))
+        .then(result => {
+          if (result.ok && result.data.success !== false) {
+            if (typeof flash === 'function') flash('Corrected and added to mappings.', 'success');
+            else alert('Corrected and added to mappings.');
+            const content = document.getElementById('aiSuggestionContent');
+            if (content) content.innerHTML = '<p class="text-sm text-emerald-300">Corrected and added to mappings.</p>';
+            if (typeof loadReviewAICount === 'function') loadReviewAICount();
+          }
+        })
+        .catch(err => { if (typeof flash === 'function') flash('Error: ' + err.message, 'error'); });
+    }
+
+    // Review AI
+    function openReviewAI() {
+      document.getElementById('reviewAIModal').classList.add('active');
+      loadReviewAI();
+    }
+    function closeReviewAI() {
+      document.getElementById('reviewAIModal').classList.remove('active');
+    }
+    function loadReviewAI() {
+      const content = document.getElementById('reviewAIContent');
+      fetch('/api/llm-review/pending')
+        .then(res => res.json())
+        .then(list => {
+          if (!list || list.length === 0) {
+            content.innerHTML = '<p class="text-sm text-zinc-400">No pending AI suggestions. Low-score matches are auto-queued when OpenAI is enabled.</p>';
+            return;
+          }
+          content.innerHTML = list.map(item => `
+            <div class="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4" data-id="${escapeHtml(item.id)}">
+              <div class="flex items-start gap-3">
+                <input type="checkbox" class="review-check mt-1 rounded" data-id="${escapeHtml(item.id)}" />
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm font-medium text-white">${escapeHtml(item.query)}</p>
+                  <p class="text-xs text-zinc-400 mt-1">→ ${escapeHtml(item.suggested_code || '')}${item.suggested_modality ? ' [' + escapeHtml(item.suggested_modality) + ']' : ''} ${escapeHtml(item.suggested_description || '')}</p>
+                  ${item.confidence != null ? '<p class="text-xs text-zinc-500 mt-0.5">AI confidence: ' + Math.round((item.confidence || 0) * 100) + '%</p>' : ''}
+                </div>
+                <div class="flex gap-2">
+                  <button type="button" onclick="disagreeReview('${escapeHtml(item.id)}')" class="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-200 hover:bg-red-500/20">Disagree</button>
+                </div>
+              </div>
+            </div>
+          `).join('');
+        })
+        .catch(err => {
+          content.innerHTML = '<p class="text-sm text-red-400">Failed to load: ' + escapeHtml(err.message) + '</p>';
+        });
+    }
+    function loadReviewAICount() {
+      fetch('/api/llm-review/pending')
+        .then(res => res.json())
+        .then(list => {
+          const el = document.getElementById('reviewAICount');
+          if (el && list && list.length > 0) {
+            el.textContent = list.length;
+            el.classList.remove('hidden');
+          } else if (el) el.classList.add('hidden');
+        })
+        .catch(() => {});
+    }
+    function agreeSelectedReview() {
+      const checked = document.querySelectorAll('.review-check:checked');
+      const ids = Array.from(checked).map(c => c.dataset.id).filter(Boolean);
+      if (ids.length === 0) {
+        if (typeof flash === 'function') flash('Select at least one to agree', 'info');
+        else alert('Select at least one to agree');
+        return;
+      }
+      fetch('/api/llm-review/agree', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ ids: ids })
+      })
+        .then(res => res.json().then(data => ({ok: res.ok, data: data})))
+        .then(result => {
+          if (result.ok) {
+            if (typeof flash === 'function') flash('Agreed on ' + ids.length + '. Added to mappings.', 'success');
+            else alert('Agreed on ' + ids.length + '. Added to mappings.');
+            loadReviewAI();
+            loadReviewAICount();
+          } else if (typeof flash === 'function') flash(result.data.error || 'Failed', 'error');
+          else alert(result.data.error || 'Failed');
+        })
+        .catch(err => {
+          if (typeof flash === 'function') flash('Error: ' + err.message, 'error');
+          else alert('Error: ' + err.message);
+        });
+    }
+    function disagreeReview(id) {
+      const correctCode = prompt('Enter the correct code:');
+      if (correctCode == null || !correctCode.trim()) return;
+      fetch('/api/llm-review/disagree', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ id: id, correct_code: correctCode.trim() })
+      })
+        .then(res => res.json().then(data => ({ok: res.ok, data: data})))
+        .then(result => {
+          if (result.ok && result.data.success !== false) {
+            if (typeof flash === 'function') flash('Corrected and added to mappings.', 'success');
+            else alert('Corrected and added to mappings.');
+            loadReviewAI();
+            loadReviewAICount();
+          } else if (typeof flash === 'function') flash(result.data.error || 'Failed', 'error');
+          else alert(result.data.error || 'Failed');
+        })
+        .catch(err => {
+          if (typeof flash === 'function') flash('Error: ' + err.message, 'error');
+          else alert('Error: ' + err.message);
+        });
+    }
+    function clearAllReview() {
+      if (!confirm('Clear all pending AI suggestions? They will not be added to mappings.')) return;
+      fetch('/api/llm-review/clear', { method: 'POST' })
+        .then(res => res.json())
+        .then(data => {
+          if (typeof flash === 'function') flash('Cleared ' + (data.cleared || 0) + ' suggestions.', 'info');
+          else alert('Cleared ' + (data.cleared || 0) + ' suggestions.');
+          loadReviewAI();
+          loadReviewAICount();
+        })
+        .catch(err => {
+          if (typeof flash === 'function') flash('Error: ' + err.message, 'error');
+          else alert('Error: ' + err.message);
+        });
+    }
+    function escapeHtml(str) {
+      if (str == null) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function loadMatchHistory() {
+      const startTime = Date.now();
+      fetch('/api/match_history?limit=500')
+        .then(res => res.json())
+        .then(data => {
+          const loadTime = ((Date.now() - startTime) / 1000).toFixed(2);
+          matchHistoryCache = data || [];
+          matchHistoryLoaded = true;
+          renderMatchHistory(matchHistoryCache);
+          console.log(`Loaded ${matchHistoryCache.length} history entries in ${loadTime}s`);
+        })
+        .catch(err => {
+          document.getElementById('matchHistoryContent').innerHTML =
+            '<div class="text-center text-red-400 py-12">Error loading match history</div>';
+        });
+    }
+
+    function runExample(text) {
+      const input = document.getElementById('heroSearchInput');
+      const form = document.getElementById('heroSearchForm');
+      if (!input || !form) return;
+      input.value = text;
+      form.submit();
+    }
+
+    function loadMatchHistoryLog() {
+      fetch('/api/match_history?limit=50')
+        .then(res => res.json())
+        .then(data => renderMatchHistoryLog(data || []))
+        .catch(() => {
+          const logEl = document.getElementById('matchHistoryLog');
+          if (logEl) {
+            logEl.innerHTML = '<div class="text-center text-red-400 py-12">Error loading match history</div>';
+          }
+        });
+    }
+
+    function startMatchHistoryLog() {
+      if (hasResult || matchHistoryLogTimer) return;
+      loadMatchHistoryLog();
+      matchHistoryLogTimer = setInterval(loadMatchHistoryLog, 5000);
+    }
+
+    function stopMatchHistoryLog() {
+      if (matchHistoryLogTimer) {
+        clearInterval(matchHistoryLogTimer);
+        matchHistoryLogTimer = null;
+      }
+    }
+
+    function renderMatchHistoryLog(data) {
+      const logEl = document.getElementById('matchHistoryLog');
+      if (!logEl) return;
+      if (!data.length) {
+        logEl.innerHTML = '<div class="text-center text-zinc-400 py-12">No match history found</div>';
+        return;
+      }
+
+      const escapeHtml = (value) => String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
+      const formatTime = (value) => {
+        if (!value) return '';
+        const parsed = new Date(value);
+        if (Number.isNaN(parsed.getTime())) return escapeHtml(value);
+        return parsed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      };
+
+      const html = data.map(row => {
+        const code = escapeHtml(row.code || 'NO MATCH');
+        const query = escapeHtml(row.query || '');
+        const description = escapeHtml(row.description || 'No match found');
+        const createdAt = formatTime(row.created_at);
+        const score = row.score ? `Score: ${row.score}` : '';
+        const method = escapeHtml(row.method || '');
+
+        return `
+          <div class="flex flex-wrap items-start gap-4 rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3">
+            <div class="text-xs text-zinc-400 w-20 shrink-0">${createdAt}</div>
+            <div class="flex-1 space-y-1">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="code-badge">${code}</span>
+                <span class="text-xs text-zinc-300">${description}</span>
+              </div>
+              <div class="text-sm font-semibold text-white">${query}</div>
+            </div>
+            <div class="text-right text-xs text-zinc-500 min-w-[90px]">
+              <div>${score}</div>
+              <div>${method}</div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      logEl.innerHTML = html;
+    }
+
+    function renderMatchHistory(data) {
+      document.getElementById('matchHistoryCount').textContent = data.length;
+      document.getElementById('matchHistoryTotal').textContent = data.length;
+      if (!data.length) {
+        document.getElementById('matchHistoryContent').innerHTML =
+          '<div class="text-center text-zinc-400 py-12">No match history found</div>';
+        return;
+      }
+
+      const escapeHtml = (value) => String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
+      const html = data.map(row => {
+        const query = escapeHtml(row.query);
+        const description = escapeHtml(row.description || '');
+        const createdAt = escapeHtml(row.created_at || '');
+        const code = escapeHtml(row.code || 'UNKNOWN');
+        const corrected = escapeHtml(row.corrected_code || '');
+        const searchable = escapeHtml(`${row.query} ${row.code} ${row.description || ''} ${row.corrected_code || ''}`);
+
+        return `
+        <div class="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 hover:bg-zinc-800/60 transition match-history-row"
+             data-id="${row.id}"
+             data-searchable="${searchable}"
+             data-method="${escapeHtml(row.method || '')}">
+          <div class="flex items-start justify-between gap-4">
+            <div class="flex-1">
+              <p class="font-semibold text-white">${query}</p>
+              <p class="text-xs text-zinc-400">${createdAt}</p>
+              <div class="mt-2 flex flex-wrap gap-2">
+                <span class="code-badge">${code}</span>
+                <span class="text-xs text-zinc-300">${description}</span>
+              </div>
+              <div id="history-corrected-${row.id}" class="mt-2 text-xs text-emerald-300 ${row.corrected_code ? '' : 'hidden'}">
+                Corrected: ${corrected}
+              </div>
+            </div>
+            <div class="text-right text-xs text-zinc-400">
+              <div>${row.score ? `Score: ${row.score}` : ''}</div>
+              <div>${row.method || ''}</div>
+            </div>
+          </div>
+          <div class="mt-3 flex flex-wrap items-center gap-2">
+            <input
+              class="manual-code-input history-code-input w-36 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-xs text-zinc-100 transition focus:border-primary/60 focus:outline-none focus:ring-2 focus:ring-primary/20"
+              placeholder="Correct code"
+              data-id="${row.id}"
+            />
+            <button type="button" onclick="openCodeLegendForHistory(${row.id})" class="rounded-lg border border-zinc-700 bg-zinc-800/60 px-3 py-2 text-xs font-semibold text-zinc-200 transition hover:bg-zinc-700/60">
+              Lookup
+            </button>
+            <button type="button" onclick="saveMatchHistoryCorrection(${row.id})" class="rounded-lg border border-primary/40 bg-primary/10 px-3 py-2 text-xs font-semibold text-primary transition hover:bg-primary/20">
+              Save
+            </button>
+            <div id="history-status-${row.id}" class="text-xs text-zinc-400"></div>
+          </div>
+        </div>
+      `;
+      }).join('');
+
+      document.getElementById('matchHistoryContent').innerHTML =
+        `<div class="space-y-3">${html}</div>`;
+      filterMatchHistory();
+    }
+
+    function filterMatchHistory() {
+      const search = document.getElementById('matchHistorySearch').value.toUpperCase();
+      const rows = document.querySelectorAll('.match-history-row');
+      let visibleCount = 0;
+
+      rows.forEach(row => {
+        const searchable = row.getAttribute('data-searchable').toUpperCase();
+        if (searchable.includes(search)) {
+          row.style.display = '';
+          visibleCount += 1;
+        } else {
+          row.style.display = 'none';
+        }
+      });
+
+      document.getElementById('matchHistoryCount').textContent = visibleCount;
+    }
+
+    function saveMatchHistoryCorrection(rowId) {
+      const input = document.querySelector(`.history-code-input[data-id="${rowId}"]`);
+      const status = document.getElementById(`history-status-${rowId}`);
+      if (!input) return;
+
+      const correctedCode = (input.value || '').trim();
+      if (!correctedCode) {
+        status.textContent = 'Enter a code first.';
+        return;
+      }
+
+      fetch(`/api/match_history/${rowId}`, {
+        method: 'PUT',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({corrected_code: correctedCode})
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          const corrected = document.getElementById(`history-corrected-${rowId}`);
+          if (corrected) {
+            corrected.textContent = `Corrected: ${data.corrected_code}`;
+            corrected.classList.remove('hidden');
+          }
+          const row = input.closest('.match-history-row');
+          if (row) {
+            const searchable = row.getAttribute('data-searchable') || '';
+            row.setAttribute('data-searchable', `${searchable} ${data.corrected_code}`);
+          }
+          status.textContent = 'Saved.';
+          input.value = '';
+        } else {
+          status.textContent = data.error || 'Failed to save.';
+        }
+      })
+      .catch(() => {
+        status.textContent = 'Failed to save.';
+      });
+    }
+
+    // Bulk Matcher
+    function openBulkUpload() {
+      document.getElementById('bulkUploadModal').classList.add('active');
+    }
+
+    function closeBulkUpload() {
+      document.getElementById('bulkUploadModal').classList.remove('active');
+    }
+
+    // ----- Code Set Manager -----
+    let codeSetData = [];
+
+    function csEscape(value) {
+      return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    function setCodeSetStatus(message, type, actionHtml) {
+      const el = document.getElementById('codeSetStatus');
+      if (!el) return;
+      if (!message) { el.classList.add('hidden'); el.innerHTML = ''; return; }
+      const color = type === 'error' ? 'text-red-300'
+        : type === 'success' ? 'text-emerald-300' : 'text-zinc-300';
+      el.className = 'rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-2.5 text-xs ' + color;
+      el.innerHTML = csEscape(message) + (actionHtml || '');
+      el.classList.remove('hidden');
+    }
+
+    function openCodeSet() {
+      document.getElementById('codeSetModal').classList.add('active');
+      hideCodeForm();
+      setCodeSetStatus('');
+      loadCodeSet();
+    }
+
+    function closeCodeSet() {
+      document.getElementById('codeSetModal').classList.remove('active');
+    }
+
+    function loadCodeSet() {
+      const content = document.getElementById('codeSetContent');
+      content.innerHTML = '<div class="flex items-center justify-center py-12 text-zinc-400"><span class="material-symbols-outlined animate-spin text-2xl">progress_activity</span><span class="ml-2">Loading codes...</span></div>';
+      fetch('/api/codes')
+        .then(res => res.json())
+        .then(data => {
+          codeSetData = (data && data.codes) || [];
+          renderCodeSetTable();
+        })
+        .catch(() => {
+          content.innerHTML = '<div class="text-center text-red-400 py-12">Error loading codes</div>';
+        });
+    }
+
+    function renderCodeSetTable() {
+      const content = document.getElementById('codeSetContent');
+      const filter = (document.getElementById('codeSetSearch')?.value || '').trim().toLowerCase();
+      const rows = codeSetData.filter(c => {
+        if (!filter) return true;
+        return (c.Code + ' ' + c.description + ' ' + c.modality + ' ' + c.bodyRegion).toLowerCase().includes(filter);
+      });
+
+      if (!codeSetData.length) {
+        content.innerHTML = '<div class="text-center text-zinc-400 py-12">No codes yet. Add one, or upload a CSV.</div>';
+        return;
+      }
+
+      const header = `
+        <div class="mb-2 text-xs text-zinc-500">${rows.length} of ${codeSetData.length} codes</div>
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="text-left text-[11px] uppercase tracking-[0.2em] text-zinc-500">
+              <th class="px-3 py-2">Code</th><th class="px-3 py-2">Description</th>
+              <th class="px-3 py-2">Mod</th><th class="px-3 py-2">Region</th>
+              <th class="px-3 py-2">Lat</th><th class="px-3 py-2">Contrast</th>
+              <th class="px-3 py-2">Views</th><th class="px-3 py-2 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-zinc-800">`;
+
+      const body = rows.map(c => `
+        <tr class="hover:bg-zinc-800/40">
+          <td class="px-3 py-2 font-semibold text-white">${csEscape(c.Code)}</td>
+          <td class="px-3 py-2 text-zinc-200">${csEscape(c.description)}</td>
+          <td class="px-3 py-2"><span class="chip">${csEscape(c.modality)}</span></td>
+          <td class="px-3 py-2 text-zinc-400">${csEscape(c.bodyRegion)}</td>
+          <td class="px-3 py-2 text-zinc-400">${csEscape(c.Laterality)}</td>
+          <td class="px-3 py-2 text-zinc-400">${csEscape(c.Contrast)}</td>
+          <td class="px-3 py-2 text-zinc-400">${csEscape(c['XR#Views'])}</td>
+          <td class="px-3 py-2 text-right whitespace-nowrap">
+            <button type="button" onclick="showEditCodeForm(${c.id})" class="rounded-lg border border-zinc-700 bg-zinc-800/60 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-700/60">Edit</button>
+            <button type="button" onclick="deleteCode(${c.id}, '${csEscape(c.Code).replace(/'/g, "\\'")}')" class="ml-1 rounded-lg border border-red-500/40 bg-red-500/10 px-2 py-1 text-xs text-red-300 hover:bg-red-500/20">Delete</button>
+          </td>
+        </tr>`).join('');
+
+      content.innerHTML = header + body + '</tbody></table>';
+    }
+
+    function filterCodeSet() { renderCodeSetTable(); }
+
+    // Canonical body parts offered in the picker. Union'd with whatever already
+    // exists in the loaded code set so the list also reflects real data.
+    const CANONICAL_BODY_REGIONS = [
+      'HEAD','BRAIN','FACE','SKULL','SINUS','ORBIT','NECK',
+      'CERVICAL SPINE','THORACIC SPINE','LUMBAR SPINE','SACRUM','COCCYX','SACROILIAC JOINT',
+      'CHEST','RIBS','STERNUM','BREAST','HEART','ABDOMEN','PELVIS',
+      'SHOULDER','CLAVICLE','HUMERUS','ELBOW','FOREARM','WRIST','HAND','FINGERS','UPPER EXTREMITY',
+      'HIP','FEMUR','KNEE','TIB FIB','ANKLE','FOOT','TOES','LOWER EXTREMITY',
+      'ENTIRE BODY','OB','UNCLASSIFIED'
+    ];
+
+    let cfBodyRegions = [];
+
+    function allBodyRegionOptions() {
+      const set = new Set(CANONICAL_BODY_REGIONS);
+      codeSetData.forEach(c => String(c.bodyRegion || '').split('/').forEach(p => {
+        const v = p.trim().toUpperCase();
+        if (v && v !== 'N/A') set.add(v);
+      }));
+      return Array.from(set).sort();
+    }
+
+    function populateBodyRegionPicker() {
+      const picker = document.getElementById('cf_bodyRegionPicker');
+      if (!picker) return;
+      const available = allBodyRegionOptions().filter(r => !cfBodyRegions.includes(r));
+      picker.innerHTML = '<option value="">+ Add body part…</option>'
+        + available.map(r => `<option value="${csEscape(r)}">${csEscape(r)}</option>`).join('');
+    }
+
+    function renderBodyRegionChips() {
+      const wrap = document.getElementById('cf_bodyRegionChips');
+      if (!wrap) return;
+      wrap.innerHTML = cfBodyRegions.map(r => `
+        <span class="chip inline-flex items-center gap-1">
+          ${csEscape(r)}
+          <button type="button" onclick="removeBodyRegion('${csEscape(r).replace(/'/g, "\\'")}')" class="text-zinc-400 hover:text-white leading-none">
+            <span class="material-symbols-outlined text-sm leading-none align-middle">close</span>
+          </button>
+        </span>`).join('');
+    }
+
+    function addBodyRegionFromPicker() {
+      const picker = document.getElementById('cf_bodyRegionPicker');
+      const val = (picker.value || '').trim().toUpperCase();
+      if (val && !cfBodyRegions.includes(val)) {
+        cfBodyRegions.push(val);
+        renderBodyRegionChips();
+        populateBodyRegionPicker();
+      }
+      picker.value = '';
+    }
+
+    function removeBodyRegion(region) {
+      cfBodyRegions = cfBodyRegions.filter(r => r !== region);
+      renderBodyRegionChips();
+      populateBodyRegionPicker();
+    }
+
+    // Set a <select> to value if it's a valid option, else fall back (keeps the
+    // control from silently holding an out-of-range value).
+    function _setSelect(id, value, fallback) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const v = (value || '').toString().trim();
+      const hasOption = Array.from(el.options).some(o => o.value === v);
+      el.value = hasOption ? v : (fallback || '');
+    }
+
+    function _setCodeForm(c) {
+      document.getElementById('cf_Code').value = c.Code || '';
+      document.getElementById('cf_description').value = c.description || '';
+      _setSelect('cf_modality', (c.modality || '').toUpperCase(), '');
+      _setSelect('cf_Laterality', (c.Laterality || '').toUpperCase(), 'N/A');
+      _setSelect('cf_Contrast', (c.Contrast || '').toUpperCase(), 'N/A');
+      document.getElementById('cf_XRViews').value = c['XR#Views'] || '';
+      cfBodyRegions = String(c.bodyRegion || '').split('/')
+        .map(p => p.trim().toUpperCase())
+        .filter(p => p && p !== 'N/A');
+      renderBodyRegionChips();
+      populateBodyRegionPicker();
+    }
+
+    function showAddCodeForm() {
+      document.getElementById('cf_editId').value = '-1';
+      _setCodeForm({});
+      document.getElementById('codeSetForm').classList.remove('hidden');
+      document.getElementById('cf_Code').focus();
+    }
+
+    function showEditCodeForm(id) {
+      const c = codeSetData.find(x => x.id === id);
+      if (!c) return;
+      document.getElementById('cf_editId').value = String(id);
+      _setCodeForm(c);
+      document.getElementById('codeSetForm').classList.remove('hidden');
+      document.getElementById('codeSetForm').scrollIntoView({behavior: 'smooth', block: 'nearest'});
+    }
+
+    function hideCodeForm() {
+      document.getElementById('codeSetForm').classList.add('hidden');
+    }
+
+    function saveCodeForm() {
+      const editId = parseInt(document.getElementById('cf_editId').value, 10);
+      const payload = {
+        Code: document.getElementById('cf_Code').value.trim(),
+        description: document.getElementById('cf_description').value.trim(),
+        modality: document.getElementById('cf_modality').value.trim(),
+        bodyRegion: cfBodyRegions.join('/'),
+        Laterality: document.getElementById('cf_Laterality').value.trim() || 'N/A',
+        Contrast: document.getElementById('cf_Contrast').value.trim() || 'N/A',
+        'XR#Views': document.getElementById('cf_XRViews').value.trim(),
+      };
+      if (!payload.Code || !payload.description) {
+        setCodeSetStatus('Code and description are required.', 'error');
+        return;
+      }
+      const isEdit = editId >= 0;
+      const url = isEdit ? `/api/codes/${editId}` : '/api/codes';
+      const method = isEdit ? 'PUT' : 'POST';
+      fetch(url, {method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)})
+        .then(res => res.json().then(d => ({ok: res.ok, d})))
+        .then(({ok, d}) => {
+          if (!ok || d.success === false) { setCodeSetStatus(d.error || 'Save failed.', 'error'); return; }
+          hideCodeForm();
+          setCodeSetStatus(isEdit ? 'Code updated. Retrain to apply to matching.' : 'Code added. Retrain to apply to matching.', 'success', _retrainButton());
+          loadCodeSet();
+        })
+        .catch(() => setCodeSetStatus('Save failed (network error).', 'error'));
+    }
+
+    function deleteCode(id, code) {
+      if (!confirm(`Delete code "${code}"? This cannot be undone.`)) return;
+      fetch(`/api/codes/${id}`, {method: 'DELETE'})
+        .then(res => res.json().then(d => ({ok: res.ok, d})))
+        .then(({ok, d}) => {
+          if (!ok || d.success === false) { setCodeSetStatus(d.error || 'Delete failed.', 'error'); return; }
+          setCodeSetStatus(`Deleted ${code}. Retrain to apply to matching.`, 'success', _retrainButton());
+          loadCodeSet();
+        })
+        .catch(() => setCodeSetStatus('Delete failed (network error).', 'error'));
+    }
+
+    function deleteAllCodes() {
+      const n = codeSetData.length;
+      if (!n) { setCodeSetStatus('There are no codes to delete.', 'info'); return; }
+      if (!confirm(`Delete ALL ${n} codes? This clears your entire code set and cannot be undone.\n\n(Your training mappings are kept; upload a new code set afterward.)`)) return;
+      fetch('/api/codes/clear', {method: 'POST'})
+        .then(res => res.json().then(d => ({ok: res.ok, d})))
+        .then(({ok, d}) => {
+          if (!ok || d.success === false) { setCodeSetStatus(d.error || 'Delete failed.', 'error'); return; }
+          setCodeSetStatus(`Deleted all ${d.removed} codes. Upload a new code set, then retrain.`, 'success', _retrainButton());
+          loadCodeSet();
+        })
+        .catch(() => setCodeSetStatus('Delete failed (network error).', 'error'));
+    }
+
+    function uploadCodeSet(input) {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      const mode = document.getElementById('codeSetUploadMode').value || 'replace';
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('mode', mode);
+      setCodeSetStatus('Uploading…', 'info');
+      fetch('/api/codes/upload', {method: 'POST', body: fd})
+        .then(res => res.json().then(d => ({ok: res.ok, d})))
+        .then(({ok, d}) => {
+          input.value = '';
+          if (!ok || d.success === false) { setCodeSetStatus(d.error || 'Upload failed.', 'error'); return; }
+          setCodeSetStatus(`Uploaded (${d.mode}). Added ${d.added}, skipped ${d.skipped}. Total ${d.total} codes. Retrain to apply.`, 'success', _retrainButton());
+          loadCodeSet();
+        })
+        .catch(() => { input.value = ''; setCodeSetStatus('Upload failed (network error).', 'error'); });
+    }
+
+    function generateVariations() {
+      setCodeSetStatus('Generating variations…', 'info');
+      fetch('/api/codes/generate_variations', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({})})
+        .then(res => res.json().then(d => ({ok: res.ok, d})))
+        .then(({ok, d}) => {
+          if (!ok || d.success === false) { setCodeSetStatus(d.error || 'Generation failed.', 'error'); return; }
+          if (d.added > 0) {
+            setCodeSetStatus(`Added ${d.added} new training variations across ${d.codes_processed} codes. Retrain to apply.`, 'success', _retrainButton());
+          } else {
+            setCodeSetStatus(`No new variations to add (already up to date across ${d.codes_processed} codes).`, 'info');
+          }
+        })
+        .catch(() => setCodeSetStatus('Generation failed (network error).', 'error'));
+    }
+
+    function _retrainButton() {
+      return ' <button type="button" onclick="retrainFromCodeSet()" class="ml-2 rounded-lg border border-primary/50 bg-primary/20 px-2 py-1 text-xs font-semibold text-primary hover:bg-primary/30">Retrain now</button>';
+    }
+
+    function retrainFromCodeSet() {
+      if (typeof startModelTraining === 'function') {
+        startModelTraining();
+      } else {
+        fetch('/train', {method: 'POST'}).then(() => setCodeSetStatus('Retraining started.', 'success'));
+      }
+    }
+
+    // Show/hide LLM provider-specific fields and update model placeholder.
+    function onLLMProviderChange() {
+      const provider = document.getElementById('settingLLMProvider')?.value || 'openai';
+      const baseWrap = document.getElementById('settingLLMBaseUrlWrap');
+      const keyInput = document.getElementById('settingLLMApiKey');
+      const modelInput = document.getElementById('settingLLMModel');
+      const placeholders = {
+        openai: 'gpt-4o',
+        anthropic: 'claude-sonnet-4-5',
+        gemini: 'gemini-1.5-flash',
+        openai_compatible: 'llama3.1  (the model name your server exposes)',
+      };
+      if (baseWrap) baseWrap.classList.toggle('hidden', provider !== 'openai_compatible');
+      if (modelInput) modelInput.placeholder = placeholders[provider] || 'model name';
+      if (keyInput) {
+        keyInput.placeholder = provider === 'openai_compatible'
+          ? '(optional — many local servers need no key)'
+          : (provider === 'gemini' ? 'AI… (Google API key)' : 'sk-…');
+      }
+    }
+
+    // Settings
+    function openSettings() {
+      const status = document.getElementById('settingsStatus');
+      status.classList.add('hidden');
+      status.textContent = '';
+      document.getElementById('settingsModal').classList.add('active');
+      loadTrainingSchedule();
+      loadAppSettings();
+    }
+
+    function closeSettings() {
+      document.getElementById('settingsModal').classList.remove('active');
+    }
+
+    function openTermReplacements() {
+      const status = document.getElementById('termReplacementsStatus');
+      status.classList.add('hidden');
+      status.textContent = '';
+      document.getElementById('termReplacementsModal').classList.add('active');
+      loadTermReplacements();
+    }
+
+    function closeTermReplacements() {
+      document.getElementById('termReplacementsModal').classList.remove('active');
+    }
+
+    function loadTrainingSchedule() {
+      fetch('/api/training_schedule')
+        .then(res => res.json())
+        .then(data => {
+          document.getElementById('scheduleEnabled').checked = !!data.enabled;
+          document.getElementById('scheduleTime').value = data.time || '03:00';
+        })
+        .catch(() => {
+          const status = document.getElementById('settingsStatus');
+          status.textContent = 'Failed to load schedule settings.';
+          status.classList.remove('hidden');
+        });
+    }
+
+    function loadAppSettings() {
+      fetch('/api/settings')
+        .then(res => res.json())
+        .then(data => {
+          const training = data.training || {};
+          const matching = data.matching || {};
+          const wizard = data.wizard || {};
+
+          document.getElementById('settingUseAugmentation').checked = !!training.use_augmentation;
+          document.getElementById('settingUseSynthetic').checked = !!training.use_synthetic;
+          document.getElementById('settingUseBalancing').checked = !!training.use_balancing;
+          document.getElementById('settingUseCrossValidation').checked = !!training.use_cross_validation;
+          document.getElementById('settingNJobs').value = Number.isFinite(training.n_jobs) ? training.n_jobs : -1;
+
+          document.getElementById('settingMaxResults').value = Number.isFinite(matching.max_results) ? matching.max_results : 15;
+          document.getElementById('settingMinMatchScore').value = Number.isFinite(matching.min_match_score) ? matching.min_match_score : 220;
+
+          document.getElementById('settingAutoApproveEnabled').checked = !!wizard.auto_approve_enabled;
+          document.getElementById('settingAutoApproveScore').value = Number.isFinite(wizard.auto_approve_score) ? wizard.auto_approve_score : 400;
+
+          const llm = data.llm || data.openai || {};
+          const llmEnabled = document.getElementById('settingLLMEnabled');
+          const llmProvider = document.getElementById('settingLLMProvider');
+          const llmKey = document.getElementById('settingLLMApiKey');
+          const llmModel = document.getElementById('settingLLMModel');
+          const llmBaseUrl = document.getElementById('settingLLMBaseUrl');
+          if (llmEnabled) llmEnabled.checked = !!llm.enabled;
+          if (llmProvider) llmProvider.value = llm.provider || 'openai';
+          if (llmKey) llmKey.value = llm.api_key === '***' ? '' : (llm.api_key || '');
+          if (llmModel) llmModel.value = llm.model || 'gpt-4o';
+          if (llmBaseUrl) llmBaseUrl.value = llm.base_url || '';
+          onLLMProviderChange();
+        })
+        .catch(() => {
+          const status = document.getElementById('settingsStatus');
+          status.textContent = 'Failed to load settings.';
+          status.classList.remove('hidden');
+        });
+    }
+
+    function renderTermReplacements(replacements) {
+      const list = document.getElementById('termReplacementsList');
+      if (!list) return;
+      list.innerHTML = '';
+      if (!Array.isArray(replacements) || !replacements.length) {
+        addTermReplacementRow();
+        return;
+      }
+      [...replacements].reverse().forEach(entry => {
+        addTermReplacementRow(entry.pattern || '', entry.replacement || '');
+      });
+    }
+
+    function addTermReplacementRow(pattern = '', replacement = '') {
+      const list = document.getElementById('termReplacementsList');
+      if (!list) return;
+      const row = document.createElement('div');
+      row.className = 'term-replacement-row flex flex-wrap items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-950/80 p-2';
+      row.innerHTML = `
+        <input type="text" class="term-replacement-pattern flex-1 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs text-zinc-100 transition focus:border-primary/60 focus:outline-none focus:ring-2 focus:ring-primary/20" placeholder="Pattern" />
+        <span class="text-xs text-zinc-500">→</span>
+        <input type="text" class="term-replacement-replacement flex-1 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-xs text-zinc-100 transition focus:border-primary/60 focus:outline-none focus:ring-2 focus:ring-primary/20" placeholder="Replacement" />
+        <button type="button" class="rounded-lg border border-red-400/30 bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-200 transition hover:bg-red-500/20">Remove</button>
+      `;
+      list.prepend(row);
+      const patternInput = row.querySelector('.term-replacement-pattern');
+      const replacementInput = row.querySelector('.term-replacement-replacement');
+      patternInput.value = pattern || '';
+      replacementInput.value = replacement || '';
+      row.querySelector('button').addEventListener('click', () => row.remove());
+      if (!pattern && !replacement) {
+        patternInput.focus();
+      }
+    }
+
+    function loadTermReplacements() {
+      const status = document.getElementById('termReplacementsStatus');
+      status.classList.add('hidden');
+      status.textContent = '';
+      fetch('/api/term-replacements')
+        .then(res => res.json())
+        .then(data => {
+          renderTermReplacements(data.replacements || []);
+        })
+        .catch(() => {
+          status.textContent = 'Failed to load term overrides.';
+          status.classList.remove('hidden');
+        });
+    }
+
+    function saveTermReplacements() {
+      const status = document.getElementById('termReplacementsStatus');
+      status.classList.add('hidden');
+      status.textContent = '';
+      const rows = document.querySelectorAll('#termReplacementsList .term-replacement-row');
+      const replacements = [];
+      rows.forEach(row => {
+        const pattern = row.querySelector('.term-replacement-pattern')?.value?.trim();
+        const replacement = row.querySelector('.term-replacement-replacement')?.value?.trim();
+        if (pattern && replacement) {
+          replacements.push({pattern: pattern, replacement: replacement});
+        }
+      });
+      fetch('/api/term-replacements', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({replacements: replacements})
+      })
+        .then(res => res.json().then(data => ({ok: res.ok, data: data})))
+        .then(result => {
+          if (!result.ok || result.data.success === false) {
+            status.textContent = result.data.error || 'Failed to save term overrides.';
+          } else {
+            status.textContent = 'Term overrides saved.';
+            renderTermReplacements(result.data.replacements || []);
+          }
+          status.classList.remove('hidden');
+        })
+        .catch(() => {
+          status.textContent = 'Failed to save term overrides.';
+          status.classList.remove('hidden');
+        });
+    }
+
+    function saveSettings(event) {
+      event.preventDefault();
+      const status = document.getElementById('settingsStatus');
+      status.classList.add('hidden');
+      status.textContent = '';
+
+      const enabled = document.getElementById('scheduleEnabled').checked;
+      const time = document.getElementById('scheduleTime').value;
+
+      const nJobsValue = parseInt(document.getElementById('settingNJobs').value, 10);
+      const maxResultsValue = parseInt(document.getElementById('settingMaxResults').value, 10);
+      const minMatchScoreValue = parseInt(document.getElementById('settingMinMatchScore').value, 10);
+      const autoApproveScoreValue = parseInt(document.getElementById('settingAutoApproveScore').value, 10);
+
+      const trainingSettings = {
+        use_augmentation: document.getElementById('settingUseAugmentation').checked,
+        use_synthetic: document.getElementById('settingUseSynthetic').checked,
+        use_balancing: document.getElementById('settingUseBalancing').checked,
+        use_cross_validation: document.getElementById('settingUseCrossValidation').checked,
+        n_jobs: Number.isFinite(nJobsValue) ? nJobsValue : -1,
+      };
+
+      const matchingSettings = {
+        max_results: Number.isFinite(maxResultsValue) ? maxResultsValue : 15,
+        min_match_score: Number.isFinite(minMatchScoreValue) ? minMatchScoreValue : 220,
+      };
+
+      const wizardSettings = {
+        auto_approve_enabled: document.getElementById('settingAutoApproveEnabled').checked,
+        auto_approve_score: Number.isFinite(autoApproveScoreValue) ? autoApproveScoreValue : 400,
+      };
+
+      const llmKeyEl = document.getElementById('settingLLMApiKey');
+      const llmSettings = {
+        enabled: document.getElementById('settingLLMEnabled')?.checked ?? false,
+        provider: document.getElementById('settingLLMProvider')?.value || 'openai',
+        api_key: llmKeyEl?.value?.trim() || '',
+        model: (document.getElementById('settingLLMModel')?.value || 'gpt-4o').trim(),
+        base_url: (document.getElementById('settingLLMBaseUrl')?.value || '').trim(),
+      };
+
+      const scheduleRequest = fetch('/api/training_schedule', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({enabled: enabled, time: time})
+      }).then(res => res.json().then(data => ({ok: res.ok, data: data})));
+
+      const settingsRequest = fetch('/api/settings', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          training: trainingSettings,
+          matching: matchingSettings,
+          wizard: wizardSettings,
+          llm: llmSettings,
+        })
+      }).then(res => res.json().then(data => ({ok: res.ok, data: data})));
+
+      Promise.all([scheduleRequest, settingsRequest])
+        .then(results => {
+          const failures = results.filter(result => !result.ok || result.data.success === false);
+          if (failures.length) {
+            const firstError = failures[0].data.error || 'Failed to save settings.';
+            status.textContent = firstError;
+          } else {
+            status.textContent = 'Settings saved.';
+          }
+          status.classList.remove('hidden');
+        })
+        .catch(() => {
+          status.textContent = 'Failed to save settings.';
+          status.classList.remove('hidden');
+        });
+    }
+
+    // Wizard Trainer Functions
+    function acceptMatch(code) {
+      // Set the accepted code and submit the form
+      document.getElementById('acceptedCodeInput').value = code;
+      document.getElementById('matchForm').submit();
+    }
+
+    function rejectMatch() {
+      // Show the alternatives section
+      document.getElementById('alternativesSection').classList.remove('hidden');
+      // Scroll to alternatives
+      document.getElementById('alternativesSection').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function verifyMatch(code, originalQuery) {
+      // Verify this ML match by adding it to exact mappings
+      if (confirm(`Add "${originalQuery}" → ${code} to verified mappings?`)) {
+        // Show loading overlay
+        const overlay = document.createElement('div');
+        overlay.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); z-index: 9999; display: flex; align-items: center; justify-content: center;';
+        overlay.innerHTML = `
+          <div style="background: #1e293b; border: 2px solid #10b981; border-radius: 1rem; padding: 2rem; text-align: center; max-width: 400px;">
+            <div style="color: #10b981; font-size: 1.5rem; margin-bottom: 1rem;">✓</div>
+            <div style="color: #e2e8f0; font-weight: 600; margin-bottom: 0.5rem;">Adding to Verified Mappings</div>
+            <div style="color: #94a3b8; font-size: 0.875rem;">Training will start automatically...</div>
+          </div>
+        `;
+        document.body.appendChild(overlay);
+
+        // Show minimized training progress badge after a short delay
+        setTimeout(() => {
+          resetTrainingUI();
+          document.getElementById('trainingStatusBadge').classList.remove('hidden');
+          isTrainingModalMinimized = true;
+
+          // Start polling for training status
+          setTimeout(() => {
+            startTrainingPoll();
+          }, 2000);
+        }, 1000);
+
+        // Create a form and submit to /confirm endpoint
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = '/confirm';
+
+        const originalInput = document.createElement('input');
+        originalInput.type = 'hidden';
+        originalInput.name = 'original';
+        originalInput.value = originalQuery;
+        form.appendChild(originalInput);
+
+        const codeInput = document.createElement('input');
+        codeInput.type = 'hidden';
+        codeInput.name = 'selected_code';
+        codeInput.value = code;
+        form.appendChild(codeInput);
+
+        document.body.appendChild(form);
+        form.submit();
+      }
+    }
+
+    // Score Breakdown
+    function showScoreBreakdown(matchIndex) {
+      const breakdownDiv = document.getElementById(`score-breakdown-${matchIndex}`);
+      if (!breakdownDiv) return;
+
+      const code = breakdownDiv.dataset.code;
+      const score = breakdownDiv.dataset.score;
+      const method = breakdownDiv.dataset.method;
+      const isExact = !!breakdownDiv.dataset.exact;
+
+      // Get all score log entries
+      const logEntries = breakdownDiv.querySelectorAll('.score-log-entry');
+
+      // Update modal content
+      document.getElementById('scoreBreakdownSubtitle').textContent = `Code: ${code}`;
+      document.getElementById('scoreBreakdownScore').textContent = score;
+      document.getElementById('scoreBreakdownMethod').textContent = method || 'TF-IDF';
+
+      // Subtle "direct match" star: only revealed here, when an exact verified
+      // mapping backs this result.
+      const exactBadge = document.getElementById('scoreBreakdownExact');
+      if (exactBadge) exactBadge.classList.toggle('hidden', !isExact);
+
+      // Build the feature breakdown list
+      const content = Array.from(logEntries).map(entry => {
+        const component = entry.dataset.component || 'Unknown';
+        const value = parseInt(entry.dataset.value) || 0;
+        const detail = entry.dataset.detail || '';
+
+        // Special styling for EXACT MATCH header
+        if (component === 'EXACT MATCH') {
+          return `
+            <div class="flex items-center justify-between rounded-lg border-2 border-emerald-500/50 bg-emerald-500/20 px-4 py-3 mb-2">
+              <div class="flex items-center gap-2">
+                <span class="material-symbols-outlined text-emerald-400">verified</span>
+                <span class="text-sm font-semibold text-emerald-300">${component}</span>
+              </div>
+              <span class="font-mono text-lg font-bold text-emerald-400">+${value}</span>
+            </div>
+          `;
+        }
+
+        // Special styling for "Matched text" - just show the detail
+        if (component === 'Matched text') {
+          return `
+            <div class="rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-2 mb-2">
+              <span class="text-xs text-zinc-500">Matched text:</span>
+              <div class="font-mono text-sm text-zinc-300 mt-1">${detail}</div>
+            </div>
+          `;
+        }
+
+        // Separator line
+        if (component.startsWith('───')) {
+          return `
+            <div class="flex items-center gap-2 py-2 mt-2">
+              <div class="flex-1 border-t border-zinc-700"></div>
+              <span class="text-xs text-zinc-500">Rule score comparison</span>
+              <div class="flex-1 border-t border-zinc-700"></div>
+            </div>
+          `;
+        }
+
+        // Special styling for TOTAL row
+        if (component === 'TOTAL') {
+          return `
+            <div class="flex items-center justify-between rounded-lg border-2 border-primary/50 bg-primary/20 px-4 py-3 mt-2">
+              <span class="text-sm font-semibold text-white">${component}</span>
+              <span class="font-mono text-lg font-bold text-white">${value}</span>
+            </div>
+          `;
+        }
+
+        // Special styling for Verification bonus
+        if (component === 'Verification bonus') {
+          return `
+            <div class="flex items-center justify-between rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 mt-2">
+              <div class="flex flex-col">
+                <span class="text-sm text-emerald-300">${component}</span>
+                ${detail ? `<span class="text-xs text-zinc-500">${detail}</span>` : ''}
+              </div>
+              <span class="font-mono text-sm font-semibold text-emerald-400">+${value}</span>
+            </div>
+          `;
+        }
+
+        // Determine color based on value
+        let valueClass = 'text-zinc-300';
+        let valuePrefix = '';
+        if (value > 0) {
+          valueClass = 'text-emerald-400';
+          valuePrefix = '+';
+        } else if (value < 0) {
+          valueClass = 'text-red-400';
+        }
+
+        return `
+          <div class="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-2">
+            <div class="flex flex-col">
+              <span class="text-sm text-zinc-300">${component}</span>
+              ${detail ? `<span class="text-xs text-zinc-500">${detail}</span>` : ''}
+            </div>
+            <span class="font-mono text-sm font-semibold ${valueClass}">${valuePrefix}${value}</span>
+          </div>
+        `;
+      }).join('');
+
+      document.getElementById('scoreBreakdownContent').innerHTML = content || '<p class="text-zinc-400 text-center py-4">No scoring details available</p>';
+
+      // Show modal
+      document.getElementById('scoreBreakdownModal').classList.add('active');
+    }
+
+    function closeScoreBreakdown() {
+      document.getElementById('scoreBreakdownModal').classList.remove('active');
+    }
+
+    // Model Training with Header Progress Bar
+    let trainingPollInterval = null;
+    let trainingNoteTimer = null;
+
+    function showHeaderTraining() {
+      document.getElementById('headerTrainingBar').classList.remove('hidden');
+      document.getElementById('headerTrainingClose').classList.add('hidden');
+      document.getElementById('headerTrainingCancel').classList.remove('hidden');
+      document.getElementById('headerTrainingIcon').className = 'material-symbols-outlined animate-spin text-2xl text-primary';
+      document.getElementById('headerTrainingTitle').textContent = 'Training Model';
+      document.getElementById('headerTrainingTitle').className = 'text-base font-semibold text-white';
+      const note = document.getElementById('headerTrainingNote');
+      if (note) {
+        note.classList.remove('hidden');
+        if (trainingNoteTimer) {
+          clearTimeout(trainingNoteTimer);
+        }
+        trainingNoteTimer = setTimeout(() => {
+          note.classList.add('hidden');
+        }, 10000);
+      }
+    }
+
+    function hideHeaderTraining() {
+      document.getElementById('headerTrainingBar').classList.add('hidden');
+    }
+
+    function updateHeaderTraining(progress, message, state = 'training') {
+      const bar = document.getElementById('headerTrainingProgress');
+      const percent = document.getElementById('headerTrainingPercent');
+      const msg = document.getElementById('headerTrainingMessage');
+      const icon = document.getElementById('headerTrainingIcon');
+      const title = document.getElementById('headerTrainingTitle');
+      const closeBtn = document.getElementById('headerTrainingClose');
+      const cancelBtn = document.getElementById('headerTrainingCancel');
+      const container = document.getElementById('headerTrainingContainer');
+      const note = document.getElementById('headerTrainingNote');
+
+      percent.textContent = progress + '%';
+      msg.textContent = message;
+
+      // Set bar width directly
+      console.log('Setting bar width to:', progress + '%', 'Bar element:', bar);
+      bar.style.width = progress + '%';
+
+      if (state === 'success') {
+        icon.className = 'material-symbols-outlined text-2xl text-emerald-400';
+        icon.textContent = 'check_circle';
+        title.textContent = 'Training Complete';
+        title.className = 'text-base font-semibold text-emerald-300';
+        container.style.background = 'transparent';
+        bar.style.background = '#10b981';
+        closeBtn.classList.remove('hidden');
+        cancelBtn.classList.add('hidden');
+        if (note) {
+          note.classList.add('hidden');
+        }
+        // Auto-hide after 5 seconds
+        setTimeout(() => {
+          if (document.getElementById('headerTrainingBar').classList.contains('hidden') === false) {
+            hideHeaderTraining();
+          }
+        }, 5000);
+      } else if (state === 'error') {
+        icon.className = 'material-symbols-outlined text-2xl text-red-400';
+        icon.textContent = 'error';
+        title.textContent = 'Training Failed';
+        title.className = 'text-base font-semibold text-red-300';
+        container.style.background = 'transparent';
+        bar.style.background = '#f43f5e';
+        closeBtn.classList.remove('hidden');
+        cancelBtn.classList.add('hidden');
+        if (note) {
+          note.classList.add('hidden');
+        }
+      } else {
+        icon.className = 'material-symbols-outlined animate-spin text-2xl text-primary';
+        icon.textContent = 'progress_activity';
+        title.textContent = 'Training Model';
+        title.className = 'text-base font-semibold text-white';
+        container.style.background = 'transparent';
+        bar.style.background = '#2f9f73';
+        closeBtn.classList.add('hidden');
+        cancelBtn.classList.remove('hidden');
+      }
+    }
+
+    function cancelTraining() {
+      fetch('/api/cancel_training', { method: 'POST' })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            updateHeaderTraining(0, 'Cancelled by user', 'error');
+            stopTrainingPoll();
+          }
+        })
+        .catch(err => {
+          console.error('Error cancelling training:', err);
+        });
+    }
+
+    function dismissHeaderTraining() {
+      hideHeaderTraining();
+      stopTrainingPoll();
+    }
+
+    function pollTrainingStatus() {
+      fetch('/api/training_status')
+        .then(res => res.json())
+        .then(status => {
+          const progress = status.progress || 0;
+          const message = status.message || 'Training...';
+
+          console.log('Training status:', status, 'Progress:', progress);
+
+          if (!status.is_training) {
+            stopTrainingPoll();
+            if (status.error) {
+              updateHeaderTraining(progress, status.error, 'error');
+            } else if (status.completed_at) {
+              updateHeaderTraining(100, 'Model updated successfully!', 'success');
+              // Clear caches
+              codeLegendLoaded = false;
+              trainingDataLoaded = false;
+            }
+          } else {
+            updateHeaderTraining(progress, message, 'training');
+          }
+        })
+        .catch(err => {
+          console.error('Error polling training status:', err);
+        });
+    }
+
+    function startTrainingPoll() {
+      pollTrainingStatus();
+      trainingPollInterval = setInterval(pollTrainingStatus, 1000);
+    }
+
+    function stopTrainingPoll() {
+      if (trainingPollInterval) {
+        clearInterval(trainingPollInterval);
+        trainingPollInterval = null;
+      }
+    }
+
+    function startModelTraining() {
+      fetch('/api/training_status')
+        .then(res => res.json())
+        .then(status => {
+          if (status.is_training) {
+            // Already training, just show and poll
+            showHeaderTraining();
+            updateHeaderTraining(status.progress || 0, status.message || 'Training...', 'training');
+            startTrainingPoll();
+            return;
+          }
+
+          // Show header bar and start training
+          showHeaderTraining();
+          updateHeaderTraining(0, 'Starting training...', 'training');
+
+          fetch('/train', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'}
+          })
+          .then(response => response.json())
+          .then(data => {
+            if (data.success) {
+              startTrainingPoll();
+            } else {
+              updateHeaderTraining(0, data.error || 'Failed to start training', 'error');
+            }
+          })
+          .catch(error => {
+            console.error('Training error:', error);
+            updateHeaderTraining(0, error.message || 'An unexpected error occurred', 'error');
+          });
+        });
+    }
+
+    // Legacy functions for compatibility (redirect to header bar)
+    function minimizeTrainingProgress() { /* no-op, always in header */ }
+    function openTrainingProgress() { showHeaderTraining(); }
+    function closeTrainingProgress() { hideHeaderTraining(); stopTrainingPoll(); }
+
+    // Check for ongoing training on page load
+    document.addEventListener('DOMContentLoaded', function() {
+      fetch('/api/training_status')
+        .then(res => res.json())
+        .then(status => {
+          if (status.is_training) {
+            showHeaderTraining();
+            updateHeaderTraining(status.progress || 0, status.message || 'Training...', 'training');
+            startTrainingPoll();
+          }
+        })
+        .catch(err => console.log('Could not check training status'));
+      if (typeof loadReviewAICount === 'function') loadReviewAICount();
+    });
+
+    // Close modals on escape
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        closeTrainingAuth();
+        closeCodeLegend();
+        closeTrainingData();
+        closeMatchHistory();
+        closeReviewAI();
+        closeBulkUpload();
+        closeSettings();
+        closeTermReplacements();
+        closeScoreBreakdown();
+        // Minimize training modal instead of closing (training continues)
+        if (document.getElementById('trainingProgressModal').classList.contains('active')) {
+          // Only minimize if training is still in progress
+          fetch('/api/training_status')
+            .then(res => res.json())
+            .then(status => {
+              if (status.is_training) {
+                minimizeTrainingProgress();
+              } else {
+                closeTrainingProgress();
+              }
+            });
+        }
+      }
+    });
+
+    // Close modals on overlay click
+    document.querySelectorAll('.modal-overlay').forEach(modal => {
+      modal.addEventListener('click', function(e) {
+        if (e.target === modal) {
+          if (modal.id === 'trainingProgressModal') {
+            // Minimize instead of close if training is in progress
+            fetch('/api/training_status')
+              .then(res => res.json())
+              .then(status => {
+                if (status.is_training) {
+                  minimizeTrainingProgress();
+                } else {
+                  closeTrainingProgress();
+                }
+              });
+          } else {
+            closeTrainingAuth();
+            closeCodeLegend();
+            closeTrainingData();
+            closeMatchHistory();
+            closeBulkUpload();
+            closeSettings();
+            closeTermReplacements();
+            closeScoreBreakdown();
+          }
+        }
+      });
+    });
+
+    // Handle "Save Training" form submission with progress indicator
+    const matchForm = document.getElementById('matchForm');
+    if (matchForm) {
+      matchForm.addEventListener('submit', function(e) {
+        // Only show progress for /confirm submissions (not /wizard or /)
+        const action = this.getAttribute('action');
+        if (action === '/confirm') {
+          // Show minimized training progress badge
+          resetTrainingUI();
+          document.getElementById('trainingStatusBadge').classList.remove('hidden');
+          isTrainingModalMinimized = true;
+
+          // Start polling for training status after a short delay
+          // (gives the server time to process the save and start training)
+          setTimeout(() => {
+            startTrainingPoll();
+          }, 2000);
+        }
+      });
+    }
+  </script>
+</body>
+</html>

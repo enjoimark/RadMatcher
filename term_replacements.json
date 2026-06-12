@@ -1,0 +1,124 @@
+{
+  "replacements": [
+    {
+      "pattern": "SBFT",
+      "replacement": "SMALL BOWEL FOLLOW THROUGH"
+    },
+    {
+      "pattern": "\\bPELV\\b",
+      "replacement": "PELVIS"
+    },
+    {
+      "pattern": "\\bSHOUL\\b",
+      "replacement": "SHOULDER"
+    },
+    {
+      "pattern": "\\bSHLD\\b",
+      "replacement": "SHOULDER"
+    },
+    {
+      "pattern": "\\bSCAP\\b",
+      "replacement": "SCAPULA"
+    },
+    {
+      "pattern": "\\bCLAV\\b",
+      "replacement": "CLAVICLE"
+    },
+    {
+      "pattern": "\\bHUM\\b",
+      "replacement": "HUMERUS"
+    },
+    {
+      "pattern": "\\bELB\\b",
+      "replacement": "ELBOW"
+    },
+    {
+      "pattern": "\\bWRIS\\b",
+      "replacement": "WRIST"
+    },
+    {
+      "pattern": "\\bFEM\\b",
+      "replacement": "FEMUR"
+    },
+    {
+      "pattern": "\\bTHIGH\\b",
+      "replacement": "FEMUR"
+    },
+    {
+      "pattern": "\\bKNE\\b",
+      "replacement": "KNEE"
+    },
+    {
+      "pattern": "\\bTIB\\b",
+      "replacement": "TIBIA"
+    },
+    {
+      "pattern": "\\bFIB\\b",
+      "replacement": "FIBULA"
+    },
+    {
+      "pattern": "\\bANKL\\b",
+      "replacement": "ANKLE"
+    },
+    {
+      "pattern": "\\bNECK\\b",
+      "replacement": "NECK"
+    },
+    {
+      "pattern": "\\bSPIN\\b",
+      "replacement": "SPINE"
+    },
+    {
+      "pattern": "\\bCERV\\b",
+      "replacement": "CERVICAL"
+    },
+    {
+      "pattern": "\\bTHOR\\b",
+      "replacement": "THORACIC"
+    },
+    {
+      "pattern": "\\bLUMB\\b",
+      "replacement": "LUMBAR"
+    },
+    {
+      "pattern": "\\bABD\\b",
+      "replacement": "ABDOMEN"
+    },
+    {
+      "pattern": "\\bABDOM\\b",
+      "replacement": "ABDOMEN"
+    },
+    {
+      "pattern": "\\bPELVIC\\b",
+      "replacement": "PELVIS"
+    },
+    {
+      "pattern": "\\bCARD\\b",
+      "replacement": "CARDIAC"
+    },
+    {
+      "pattern": "\\bKIDN\\b",
+      "replacement": "KIDNEY"
+    },
+    {
+      "pattern": "\\bREN\\b",
+      "replacement": "RENAL"
+    },
+    {
+      "pattern": "\\bBLAD\\b",
+      "replacement": "BLADDER"
+    },
+    {
+      "pattern": "\\bPROST\\b",
+      "replacement": "PROSTATE"
+    },
+    {
+      "pattern": "\\bUTER\\b",
+      "replacement": "UTERUS"
+    },
+    {
+      "pattern": "\\bOVAR\\b",
+      "replacement": "OVARY"
+    }
+  ]
+}

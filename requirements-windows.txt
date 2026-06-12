@@ -1,0 +1,3 @@
+# RadMatcher v3 no longer depends on torch, so Windows needs nothing special --
+# the dependencies are identical to every other platform.
+-r requirements.txt

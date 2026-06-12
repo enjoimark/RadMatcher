@@ -1,0 +1,24 @@
+{
+  "training": {
+    "use_augmentation": true,
+    "use_synthetic": true,
+    "use_balancing": true,
+    "use_cross_validation": false,
+    "n_jobs": -1
+  },
+  "matching": {
+    "max_results": 15,
+    "min_match_score": 100
+  },
+  "wizard": {
+    "auto_approve_enabled": true,
+    "auto_approve_score": 400
+  },
+  "llm": {
+    "enabled": false,
+    "provider": "openai",
+    "model": "gpt-4o",
+    "api_key": "",
+    "base_url": ""
+  }
+}

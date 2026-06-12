@@ -1,0 +1,19 @@
+# RadMatcher runtime dependencies — pinned to tested versions for reproducible
+# installs. sentence-transformers + lightgbm power the retrieval+rerank stack
+# (see matcher / reranker); torch is the numerical engine for embeddings.
+#
+# Requires Python 3.11+ — numpy 2.3 and torch 2.9 do not support 3.10 or older.
+# Installing on an older Python silently resolves a different numpy/torch combo
+# that produces NaN/Inf in the embedding similarity matmul.
+flask==3.0.3
+numpy==2.3.5
+scipy==1.17.1
+scikit-learn==1.8.0
+joblib==1.5.3
+rapidfuzz==3.14.3
+sentence-transformers==5.2.0
+torch==2.9.1
+lightgbm==4.6.0
+# requests is used by the HuggingFace model-download path but is no longer
+# pulled in transitively by the newer sentence-transformers/hub stack.
+requests==2.34.2
