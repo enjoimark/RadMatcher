@@ -1384,6 +1384,41 @@ def annotate_min_score(result, min_score=None):
     return result
 
 
+def boost_exact_match_scores(result, floor):
+    """Floor the score of any verified/exact mapping to `floor`.
+
+    Once a query is mapped (e.g. by agreeing with an LLM suggestion), it is an
+    exact match and authoritative -- it should never be judged or displayed
+    below the match threshold. The reranker's organic score for a trained query
+    can legitimately sit under the threshold (close lookalikes shrink the
+    margin), which made already-trained queries look low-confidence and re-fire
+    the LLM. Flooring exact matches to the threshold fixes both: they clear the
+    bar and stop re-consulting the LLM. Non-exact matches are untouched.
+
+    Must run before annotate_min_score / logging / the LLM gate so every
+    downstream consumer sees the same boosted number. The exact match is already
+    promoted to rank #1, so raising its score only keeps it there.
+    """
+    if not isinstance(result, dict) or not floor:
+        return result
+    for match in (result.get("matches") or []):
+        if not (isinstance(match, dict) and match.get("is_exact")):
+            continue
+        try:
+            score = float(match.get("score", 0))
+        except (TypeError, ValueError):
+            continue
+        if score >= floor:
+            continue
+        match["score"] = floor
+        # Keep the score-breakdown modal consistent with the headline number.
+        for entry in (match.get("score_log") or []):
+            if isinstance(entry, dict) and entry.get("component") == "TOTAL":
+                entry["value"] = floor
+                entry["detail"] = "verified mapping (floored to match threshold)"
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -1408,6 +1443,10 @@ def index():
             max_results = settings.get("matching", {}).get("max_results", MAX_RESULTS_DEFAULT)
             min_match_score = settings.get("matching", {}).get("min_match_score", MIN_MATCH_SCORE_DEFAULT)
             result = build_result(query_raw, manual_modality=manual_modality, max_results=max_results)
+            # Verified/exact mappings are authoritative -- floor them to the
+            # threshold so a trained query always clears the bar (and the modal
+            # number matches). Must precede annotate_min_score.
+            boost_exact_match_scores(result, min_match_score if min_match_score > 0 else 250)
             result = annotate_min_score(result, min_score=min_match_score)
             if not result.get("matches"):
                 flash("No match found.", "info")
@@ -1428,7 +1467,12 @@ def index():
             min_match_score = settings.get("matching", {}).get("min_match_score", MIN_MATCH_SCORE_DEFAULT)
             threshold = min_match_score if min_match_score > 0 else 250
             llm_cfg = settings.get("llm", {})
-            if top_score < threshold and llm_is_ready(llm_cfg):
+            # A verified/exact mapping (e.g. one already trained from a past LLM
+            # suggestion) is authoritative -- never re-consult the LLM for it,
+            # even if its promoted score lands below the threshold. Otherwise an
+            # already-trained query would pointlessly hit the LLM again.
+            top_is_exact = bool(top_match and top_match.get("is_exact"))
+            if top_score < threshold and not top_is_exact and llm_is_ready(llm_cfg):
                 llm_fallback_enabled = True
                 llm_query = query_raw.strip()
                 llm_top_score = top_score
@@ -1506,6 +1550,9 @@ def api_match():
     min_score = _normalize_int(min_score, MIN_MATCH_SCORE_DEFAULT)
 
     result = build_result(query, manual_modality=manual_modality, max_results=max_results)
+    # Verified/exact mappings are authoritative -- floor them to the threshold so
+    # a trained query always clears the bar. Must precede annotate_min_score.
+    boost_exact_match_scores(result, min_score if min_score > 0 else 250)
     result = annotate_min_score(result, min_score=min_score)
 
     top_match = result.get("matches")[0] if result.get("matches") else None
@@ -1519,7 +1566,11 @@ def api_match():
     auto_suggest = data.get("auto_suggest_on_low_score", True)
     threshold = min_score if min_score > 0 else 250
     llm_cfg = settings.get("llm", {})
-    if auto_suggest and top_score < threshold and llm_is_ready(llm_cfg):
+    # A verified/exact mapping is authoritative -- never re-consult the LLM for
+    # it, even if its promoted score lands below the threshold (an already-
+    # trained query must not pointlessly trigger the LLM again).
+    top_is_exact = bool(top_match and top_match.get("is_exact"))
+    if auto_suggest and top_score < threshold and not top_is_exact and llm_is_ready(llm_cfg):
         try:
             codes = get_code_legend()
             code_list = [{"code": c.get("code", ""), "description": c.get("description", ""), "modality": c.get("modality", "")} for c in codes]
