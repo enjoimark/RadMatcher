@@ -55,13 +55,14 @@ def get_pending() -> List[Dict[str, Any]]:
         return list(_pending)
 
 
-def agree(ids: List[str], upsert_mapping_fn) -> int:
+def agree(ids: List[str]) -> List[tuple]:
     """
-    Agree on selected items: add query->code to mappings and remove from pending.
-    Any other pending entry for the same query is removed too -- once a query is
-    mapped, its duplicates are resolved as well.
-    upsert_mapping_fn(query, code, note) -> bool
-    Returns number of mappings added.
+    Resolve agreed items to their (query, code) pairs and drop them from the
+    pending queue. Any other pending entry sharing the same query is dropped too
+    -- once a query is mapped, its duplicates are resolved as well.
+
+    Persisting the pairs is the caller's job (done as a single batched write so
+    accepting many suggestions is fast). Returns the list of (query, code) pairs.
     """
     to_add: List[tuple] = []
     with _lock:
@@ -74,9 +75,7 @@ def agree(ids: List[str], upsert_mapping_fn) -> int:
         _pending[:] = [it for it in _pending
                        if _qkey(it.get("query", "")) not in agreed_keys]
 
-    for query, code in to_add:
-        upsert_mapping_fn(query, code, "### added by AI review (agree)")
-    return len(to_add)
+    return to_add
 
 
 def clear_all() -> int:

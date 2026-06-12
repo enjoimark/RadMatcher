@@ -169,6 +169,10 @@ PASSWORD = os.environ.get("RADMATCHER_PASSWORD", "radmatcher")
 MIN_MATCH_SCORE_DEFAULT = 220
 MIN_CONFIDENCE_DEFAULT = 0.5  # calibrated P(top1 correct); below this -> LLM fallback
 MAX_RESULTS_DEFAULT = 15
+
+# Cap the CPU threads the background retrain may use, leaving 2 cores free so
+# live queries stay fast while training runs. Always >= 1.
+TRAIN_THREAD_CAP = max(1, (os.cpu_count() or 4) - 2)
 MODEL_PATH = os.path.join(APP_DIR, "matcher_model.pkl")
 EMBED_CACHE_PATH = os.path.join(APP_DIR, "embeddings.npz")
 RERANKER_PATH = os.path.join(APP_DIR, "reranker.pkl")
@@ -657,6 +661,18 @@ def start_training():
         try:
             print("TRAINING STARTED")
 
+            # Leave CPU headroom so live /api/match queries stay responsive while
+            # this background retrain runs. Without a cap the embedding encode
+            # (torch) and the LightGBM feature build (joblib, n_jobs=-1) grab
+            # every core, starving the request thread and making queries crawl
+            # during training. Capping the shared compute pools to (cores - 2)
+            # keeps a couple of cores free to serve matches.
+            try:
+                import torch
+                torch.set_num_threads(TRAIN_THREAD_CAP)
+            except Exception:
+                pass
+
             # Update progress periodically in a separate thread
             def progress_updater():
                 start_time = time.time()
@@ -745,6 +761,7 @@ def start_training():
                         from reranker import train_reranker, fit_calibrator
                         new_matcher.reranker = train_reranker(
                             new_matcher, new_matcher.embedding_index,
+                            n_jobs=TRAIN_THREAD_CAP,
                         )
                         _set_training_stage(
                             "calibrator", 88,
@@ -927,6 +944,39 @@ _scheduler_thread = threading.Thread(target=scheduled_training_worker, daemon=Tr
 _scheduler_thread.start()
 
 
+# exam_mappings.csv is written both by the app (manual confirm, AI-review
+# "agree"/"disagree", code-set edits) and possibly by external tools. The
+# watcher below should retrain only on *external* edits -- every app write path
+# already reloads mappings and starts its own retrain. We record the mtime of
+# each app write so the watcher can recognize and skip its own changes;
+# otherwise every app write triggers a second, redundant retrain right after
+# the first (the "training twice in a row" symptom).
+_APP_MAPPING_WRITES = set()
+_APP_MAPPING_WRITES_LOCK = threading.Lock()
+
+
+def _note_app_mapping_write():
+    """Record the current exam_mappings.csv mtime as an app-initiated write."""
+    try:
+        mtime = os.path.getmtime(MAPPINGS_FILE)
+    except OSError:
+        return
+    with _APP_MAPPING_WRITES_LOCK:
+        _APP_MAPPING_WRITES.add(mtime)
+        if len(_APP_MAPPING_WRITES) > 64:  # keep the set bounded
+            _APP_MAPPING_WRITES.clear()
+            _APP_MAPPING_WRITES.add(mtime)
+
+
+def _was_app_mapping_write(mtime):
+    """True (and consumes the record) if `mtime` came from an app write."""
+    with _APP_MAPPING_WRITES_LOCK:
+        if mtime in _APP_MAPPING_WRITES:
+            _APP_MAPPING_WRITES.discard(mtime)
+            return True
+    return False
+
+
 def csv_file_watcher():
     """Watch exam_mappings.csv for external modifications and auto-retrain."""
     last_mtime = None
@@ -939,11 +989,17 @@ def csv_file_watcher():
             if os.path.exists(MAPPINGS_FILE):
                 current_mtime = os.path.getmtime(MAPPINGS_FILE)
                 if last_mtime and current_mtime > last_mtime:
-                    print(f"[CSV Watcher] Detected change in {MAPPINGS_FILE}")
-                    reload_exact_mappings()
-                    # Auto-trigger training after external CSV modification
-                    if start_training():
-                        print("[CSV Watcher] Started background retraining")
+                    if _was_app_mapping_write(current_mtime):
+                        # The app made this change (manual confirm / AI-review
+                        # agree / code edit). That path already reloaded mappings
+                        # and kicked a retrain, so don't train a second time.
+                        print("[CSV Watcher] Skipping app-initiated mapping write")
+                    else:
+                        print(f"[CSV Watcher] Detected change in {MAPPINGS_FILE}")
+                        reload_exact_mappings()
+                        # Auto-trigger training after external CSV modification
+                        if start_training():
+                            print("[CSV Watcher] Started background retraining")
                 last_mtime = current_mtime
         except Exception as e:
             print(f"[CSV Watcher] Error: {e}")
@@ -988,6 +1044,7 @@ def upsert_mapping(original, selected_code, note):
     with open(MAPPINGS_FILE, "w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
         writer.writerows(rows)
+    _note_app_mapping_write()  # let the watcher know this write was ours
 
     reload_exact_mappings()
 
@@ -1037,6 +1094,79 @@ def upsert_mapping(original, selected_code, note):
         _queue_training_request()
 
     return updated
+
+
+def upsert_mappings_bulk(pairs, note):
+    """Apply many (query, code) mappings in a single CSV rewrite, a single
+    reload, and one background retrain.
+
+    Used by the AI-review "agree" path: accepting N suggestions used to call
+    upsert_mapping() N times -- N full CSV rewrites + reloads + retrain kicks --
+    all synchronously inside the request, which is why agreeing to a batch took
+    forever. Here we do the work once and return immediately; the exact mappings
+    are live the instant reload_exact_mappings() returns (so the corrected match
+    is available on the very next query, before the retrain finishes), and the
+    LightGBM weights catch up in the background.
+
+    Returns the number of newly added (vs updated) mappings.
+    """
+    cleaned = []
+    for original, code in pairs:
+        original_clean = sanitize_mapping_query(original)
+        code = (code or "").strip()
+        if original_clean and code:
+            cleaned.append((original_clean, code))
+    if not cleaned:
+        return 0
+
+    rows = []
+    if os.path.exists(MAPPINGS_FILE):
+        with open(MAPPINGS_FILE, "r", newline="", encoding="utf-8") as handle:
+            rows = list(csv.reader(handle))
+
+    index_by_key = {}
+    for i, row in enumerate(rows):
+        if row:
+            index_by_key[normalize_mapping_key(row[0])] = i
+
+    added = 0
+    for original_clean, code in cleaned:
+        key = normalize_mapping_key(original_clean)
+        if key in index_by_key:
+            row = rows[index_by_key[key]]
+            row[0] = original_clean
+            if len(row) < 2:
+                row.append(code)
+            else:
+                row[1] = code
+            if len(row) < 3:
+                row.append(note)
+            else:
+                row[2] = note
+        else:
+            rows.append([original_clean, code, note])
+            index_by_key[key] = len(rows) - 1
+            added += 1
+
+    with open(MAPPINGS_FILE, "w", newline="", encoding="utf-8") as handle:
+        csv.writer(handle).writerows(rows)
+    _note_app_mapping_write()  # let the watcher know this write was ours
+
+    # Make every new mapping live immediately: exact-match lookup is rebuilt
+    # here, so the corrected code is promoted to the top of the very next query
+    # for these phrasings -- no need to wait for the retrain.
+    reload_exact_mappings()
+
+    for original_clean, code in cleaned:
+        print(f"TRAINING (AI agree): '{original_clean}' -> {code}")
+
+    # One background retrain so the reranker weights catch up with the whole
+    # batch (the embeddings are rebuilt there). Exact-match promotion keeps the
+    # live matcher correct in the meantime.
+    if not start_training():
+        _queue_training_request()
+
+    return added
 
 
 def get_code_legend():
@@ -1287,22 +1417,18 @@ def index():
             top_match = result.get("matches")[0] if result.get("matches") else None
             log_match_history(query_raw, result, top_match)
 
-            # LLM fallback: prefer calibrated confidence if the reranker
-            # supplies it (calibrated_confidence = P(top1 is correct)). Falls
-            # back to the legacy score threshold if the matcher path is rules
-            # or legacy ML (which don't produce a calibrated probability).
+            # LLM fallback gate. The match-score threshold is the *hard* gate:
+            # if the top score clears it, the match is trusted and the LLM is
+            # never called -- regardless of any calibrated confidence the
+            # reranker emits. Only a top score below the threshold (or no match
+            # at all) falls back to the LLM. This keeps the threshold the single
+            # knob that controls fallback; lowering it reliably suppresses LLM
+            # calls, even after training adds calibrated confidences.
             top_score = int(top_match.get("score", 0)) if top_match else int(result.get("rejected_score", 0) or 0)
             min_match_score = settings.get("matching", {}).get("min_match_score", MIN_MATCH_SCORE_DEFAULT)
-            min_conf = settings.get("matching", {}).get("min_confidence", MIN_CONFIDENCE_DEFAULT)
             threshold = min_match_score if min_match_score > 0 else 250
             llm_cfg = settings.get("llm", {})
-            confidence = top_match.get("calibrated_confidence") if top_match else None
-            low_conf = (confidence is not None and confidence < min_conf)
-            # Score floor is a hard safety net — fires even when the calibrator
-            # is confident, because a wide margin between two bad candidates
-            # (OOD queries) can fool the calibrator.
-            low_score = (top_score < threshold)
-            if (low_conf or low_score) and llm_is_ready(llm_cfg):
+            if top_score < threshold and llm_is_ready(llm_cfg):
                 llm_fallback_enabled = True
                 llm_query = query_raw.strip()
                 llm_top_score = top_score
@@ -1386,18 +1512,14 @@ def api_match():
     top_score = int(top_match.get("score", 0)) if top_match else int(result.get("rejected_score", 0) or 0)
     log_match_history(query, result, top_match)
 
-    # LLM fallback: calibrated confidence is the primary signal; the score
-    # threshold is a hard safety net that fires even when the calibrator
-    # is confident, because a wide margin between two bad candidates (OOD
-    # queries) can fool the calibrator.
+    # LLM fallback gate. The match-score threshold is the *hard* gate: a top
+    # score at/above it is trusted and never calls the LLM, regardless of the
+    # reranker's calibrated confidence. Only a below-threshold top score (or no
+    # match) falls back, so the threshold reliably controls fallback.
     auto_suggest = data.get("auto_suggest_on_low_score", True)
     threshold = min_score if min_score > 0 else 250
-    min_conf = settings.get("matching", {}).get("min_confidence", MIN_CONFIDENCE_DEFAULT)
-    confidence = top_match.get("calibrated_confidence") if top_match else None
-    low_conf = (confidence is not None and confidence < min_conf)
-    low_score = (top_score < threshold)
     llm_cfg = settings.get("llm", {})
-    if auto_suggest and (low_conf or low_score) and llm_is_ready(llm_cfg):
+    if auto_suggest and top_score < threshold and llm_is_ready(llm_cfg):
         try:
             codes = get_code_legend()
             code_list = [{"code": c.get("code", ""), "description": c.get("description", ""), "modality": c.get("modality", "")} for c in codes]
@@ -1500,8 +1622,12 @@ def api_llm_review_agree():
     ids = data.get("ids") or []
     if not ids:
         return jsonify({"error": "Ids required"}), 400
-    added = llm_agree(ids, upsert_mapping)
-    return jsonify({"agreed": len(ids), "added_to_mappings": added})
+    # Resolve the agreed items to (query, code) pairs first (fast, in-memory),
+    # then persist them all in one batched write + single background retrain so
+    # the request returns immediately instead of training once per item.
+    pairs = llm_agree(ids)
+    added = upsert_mappings_bulk(pairs, "### added by AI review (agree)")
+    return jsonify({"agreed": len(pairs), "added_to_mappings": added})
 
 
 @app.route("/api/llm-review/disagree", methods=["POST"])
